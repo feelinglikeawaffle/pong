@@ -2,174 +2,84 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Pong Menu + Modes</title>
+<title>Pong Single Player + Health</title>
 <style>
   body { margin:0; background:#000; color:white; font-family:Arial; text-align:center; }
-  canvas { background:#111; display:none; margin:auto; margin-top:20px; }
-  .menu, .submenu { margin-top:100px; }
-  button {
-    padding:15px 30px; margin:10px; font-size:20px;
-    background:#222; color:white; border:2px solid #555; cursor:pointer;
+  canvas { background:#111; display:block; margin:40px auto; }
+  #health {
+    font-size:24px;
+    margin-top:20px;
   }
-  button:hover { background:#444; }
 </style>
 </head>
 <body>
 
-<div id="menu" class="menu">
-  <h1>PONG</h1>
-  <button onclick="startSingle()">Single Player</button><br>
-  <button onclick="showMultiplayer()">Multiplayer</button>
-</div>
-
-<div id="submenu" class="submenu" style="display:none;">
-  <h2>Multiplayer</h2>
-  <button onclick="startTwoPlayer()">2 Players</button><br>
-  <button onclick="startFourPlayer()">4 Players</button><br>
-  <button onclick="backToMenu()">Back</button>
-</div>
-
+<h1>PONG — Single Player</h1>
+<div id="health">Player HP: 5 | Bot HP: 5</div>
 <canvas id="game" width="900" height="600"></canvas>
 
 <script>
-/* ===========================
-      GLOBAL GAME STATE
-=========================== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let mode = ""; // "single", "2p", "4p"
-let running = false;
+let playerHP = 5;
+let botHP = 5;
 
 const keys = {};
-
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-/* ===========================
-      MENU FUNCTIONS
-=========================== */
-function showMultiplayer() {
-  document.getElementById("menu").style.display = "none";
-  document.getElementById("submenu").style.display = "block";
-}
+let ball, leftPaddle, rightPaddle;
 
-function backToMenu() {
-  document.getElementById("submenu").style.display = "none";
-  document.getElementById("menu").style.display = "block";
-}
-
-function startSingle() {
-  mode = "single";
-  startGame();
-}
-
-function startTwoPlayer() {
-  mode = "2p";
-  startGame();
-}
-
-function startFourPlayer() {
-  mode = "4p";
-  startGame();
-}
-
-/* ===========================
-      GAME OBJECTS
-=========================== */
-let ball, paddles;
-
-function resetBall() {
+function resetBall(direction = 1) {
   ball = {
     x: canvas.width/2,
     y: canvas.height/2,
-    dx: Math.random() < 0.5 ? 5 : -5,
+    dx: 5 * direction,
     dy: (Math.random()*4 - 2)
   };
 }
 
-function createPaddles() {
-  paddles = {
-    left:   { x:20, y:250, w:15, h:100, dy:0 },
-    right:  { x:canvas.width-35, y:250, w:15, h:100, dy:0 },
-    top:    { x:350, y:20, w:200, h:15, dx:0 },
-    bottom: { x:350, y:canvas.height-35, w:200, h:15, dx:0 }
-  };
+function resetGame() {
+  playerHP = 5;
+  botHP = 5;
+  updateHealth();
+  resetBall();
 }
 
-/* ===========================
-      START GAME
-=========================== */
-function startGame() {
-  document.getElementById("menu").style.display = "none";
-  document.getElementById("submenu").style.display = "none";
-  canvas.style.display = "block";
+function updateHealth() {
+  document.getElementById("health").textContent =
+    `Player HP: ${playerHP} | Bot HP: ${botHP}`;
+}
 
-  createPaddles();
+function init() {
+  leftPaddle = { x:20, y:250, w:15, h:100, dy:0 };
+  rightPaddle = { x:canvas.width-35, y:250, w:15, h:100, dy:0 };
   resetBall();
-  running = true;
   loop();
 }
 
-/* ===========================
-      UPDATE LOGIC
-=========================== */
 function update() {
-  if (!running) return;
+  // Player movement
+  leftPaddle.dy = keys["w"] ? -6 : keys["s"] ? 6 : 0;
+  leftPaddle.y += leftPaddle.dy;
+  leftPaddle.y = Math.max(0, Math.min(canvas.height - leftPaddle.h, leftPaddle.y));
 
-  // --- PLAYER CONTROLS ---
-  if (mode === "single") {
-    // Player left paddle
-    paddles.left.dy = (keys["w"] ? -6 : keys["s"] ? 6 : 0);
+  // Bot AI
+  let target = ball.y - rightPaddle.h/2;
+  rightPaddle.y += (target - rightPaddle.y) * 0.08;
+  rightPaddle.y = Math.max(0, Math.min(canvas.height - rightPaddle.h, rightPaddle.y));
 
-    // AI right paddle
-    let target = ball.y - paddles.right.h/2;
-    paddles.right.y += (target - paddles.right.y) * 0.08;
-  }
-
-  if (mode === "2p") {
-    paddles.left.dy  = keys["w"] ? -6 : keys["s"] ? 6 : 0;
-    paddles.right.dy = keys["ArrowUp"] ? -6 : keys["ArrowDown"] ? 6 : 0;
-  }
-
-  if (mode === "4p") {
-    // Left paddle (Q/E)
-    paddles.left.dy = keys["q"] ? -6 : keys["e"] ? 6 : 0;
-
-    // Right paddle (T/U)
-    paddles.right.dy = keys["t"] ? -6 : keys["u"] ? 6 : 0;
-
-    // Top paddle (V/N)
-    paddles.top.dx = keys["v"] ? -6 : keys["n"] ? 6 : 0;
-
-    // Bottom paddle (←/→)
-    paddles.bottom.dx = keys["ArrowLeft"] ? -6 : keys["ArrowRight"] ? 6 : 0;
-  }
-
-  // --- MOVE PADDLES ---
-  paddles.left.y += paddles.left.dy;
-  paddles.right.y += paddles.right.dy;
-
-  paddles.top.x += paddles.top.dx;
-  paddles.bottom.x += paddles.bottom.dx;
-
-  // Clamp paddles
-  paddles.left.y = Math.max(0, Math.min(canvas.height - paddles.left.h, paddles.left.y));
-  paddles.right.y = Math.max(0, Math.min(canvas.height - paddles.right.h, paddles.right.y));
-
-  paddles.top.x = Math.max(0, Math.min(canvas.width - paddles.top.w, paddles.top.x));
-  paddles.bottom.x = Math.max(0, Math.min(canvas.width - paddles.bottom.w, paddles.bottom.x));
-
-  // --- MOVE BALL ---
+  // Move ball
   ball.x += ball.dx;
   ball.y += ball.dy;
 
-  // Bounce top/bottom walls (except in 4p mode)
-  if (mode !== "4p") {
-    if (ball.y <= 0 || ball.y >= canvas.height) ball.dy *= -1;
+  // Wall bounce
+  if (ball.y <= 0 || ball.y + 10 >= canvas.height) {
+    ball.dy *= -1;
   }
 
-  // --- COLLISIONS ---
+  // Collision helper
   function collide(p) {
     return (
       ball.x < p.x + p.w &&
@@ -179,36 +89,34 @@ function update() {
     );
   }
 
-  // Left paddle
-  if (collide(paddles.left)) {
+  // Left paddle hit
+  if (collide(leftPaddle)) {
     ball.dx = Math.abs(ball.dx);
-    ball.dy += (ball.y - (paddles.left.y + paddles.left.h/2)) * 0.1;
+    ball.dy += (ball.y - (leftPaddle.y + leftPaddle.h/2)) * 0.1;
   }
 
-  // Right paddle
-  if (collide(paddles.right)) {
+  // Right paddle hit
+  if (collide(rightPaddle)) {
     ball.dx = -Math.abs(ball.dx);
-    ball.dy += (ball.y - (paddles.right.y + paddles.right.h/2)) * 0.1;
+    ball.dy += (ball.y - (rightPaddle.y + rightPaddle.h/2)) * 0.1;
   }
 
-  // Top paddle (4p only)
-  if (mode === "4p" && collide(paddles.top)) {
-    ball.dy = Math.abs(ball.dy);
+  // Scoring / HP loss
+  if (ball.x < 0) {
+    playerHP--;
+    updateHealth();
+    if (playerHP <= 0) resetGame();
+    else resetBall(1);
   }
 
-  // Bottom paddle (4p only)
-  if (mode === "4p" && collide(paddles.bottom)) {
-    ball.dy = -Math.abs(ball.dy);
+  if (ball.x > canvas.width) {
+    botHP--;
+    updateHealth();
+    if (botHP <= 0) resetGame();
+    else resetBall(-1);
   }
-
-  // --- SCORING ---
-  if (ball.x < 0 || ball.x > canvas.width) resetBall();
-  if (mode === "4p" && (ball.y < 0 || ball.y > canvas.height)) resetBall();
 }
 
-/* ===========================
-      DRAW
-=========================== */
 function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -219,23 +127,20 @@ function draw() {
 
   // Paddles
   ctx.fillStyle = "white";
-  for (let p of Object.values(paddles))
-    ctx.fillRect(p.x, p.y, p.w, p.h);
+  ctx.fillRect(leftPaddle.x, leftPaddle.y, leftPaddle.w, leftPaddle.h);
+  ctx.fillRect(rightPaddle.x, rightPaddle.y, rightPaddle.w, rightPaddle.h);
 
   // Ball
   ctx.fillRect(ball.x, ball.y, 10, 10);
 }
 
-/* ===========================
-      GAME LOOP
-=========================== */
 function loop() {
-  if (running) {
-    update();
-    draw();
-    requestAnimationFrame(loop);
-  }
+  update();
+  draw();
+  requestAnimationFrame(loop);
 }
+
+init();
 </script>
 
 </body>
