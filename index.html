@@ -2,12 +2,12 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Chaos Pong Deckbuilder</title>
+<title>Chaos Pong Deckbuilder – Controlled</title>
 <style>
-  body { margin:0; background:#000; color:#fff; font-family:Arial, sans-serif; text-align:center; }
+  body { margin:0; background:#000; color:#fff; font-family:Arial,sans-serif; text-align:center; }
   #menu, #cardList, #credits { margin-top:80px; }
   button {
-    padding:12px 24px; margin:8px; font-size:18px;
+    padding:10px 20px; margin:6px; font-size:18px;
     background:#222; color:#fff; border:2px solid #555; cursor:pointer;
   }
   button:hover { background:#444; }
@@ -21,7 +21,7 @@
     display:flex; gap:12px; flex-wrap:wrap; justify-content:center; max-width:1000px;
   }
   .card {
-    width:180px; padding:10px; border-radius:6px; border:2px solid #888;
+    width:190px; padding:10px; border-radius:6px; border:2px solid #888;
     background:#222; cursor:pointer; text-align:left; font-size:14px;
   }
   .card h3 { margin:0 0 6px 0; font-size:16px; }
@@ -48,7 +48,7 @@
 
 <div id="credits" style="display:none;">
   <h2>Credits</h2>
-  <p>Pong, but it overdosed on deckbuilders.</p>
+  <p>Pong + deckbuilder + just enough chaos.</p>
   <button onclick="backToMenu()">Back</button>
 </div>
 
@@ -61,7 +61,7 @@
 
 <div id="cardOverlay">
   <h2>Choose a Card</h2>
-  <p>You pick one. Bot picks one too.</p>
+  <p>You pick one. Bot gets a random one too.</p>
   <div id="cardContainer"></div>
 </div>
 
@@ -75,29 +75,31 @@ let keys = {};
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-let playerHP = 5;
-let botHP = 5;
-let bounceCount = 0;
-let nextDraftAt = 4;
+let playerHP, botHP;
+let bounceCount, nextDraftAt;
 
 let player, bot;
 let balls = [];
 let explosions = [];
 
-let modifiers = {
-  playerPaddleSpeedMult: 1,
-  botPaddleSpeedMult: 1,
-  ballSpeedMult: 1,
-  ballSize: 10,
-  playerShield: 0,
-  botShield: 0,
-  gravity: 0,
-  spinFactor: 0.12,
-  chaosBounce: false,
-  fireTrail: false,
-  botError: 0,
-  timeScale: 1
-};
+let modifiers;
+
+function defaultModifiers() {
+  return {
+    playerPaddleSpeedMult: 1,
+    botPaddleSpeedMult: 1,
+    ballSpeedMult: 1,
+    ballSize: 10,
+    playerShield: 0,
+    botShield: 0,
+    gravity: 0,
+    spinFactor: 0.12,
+    chaosBounce: false,
+    fireTrail: false,
+    botError: 0,
+    timeScale: 1
+  };
+}
 
 function startGame() {
   document.getElementById("menu").style.display = "none";
@@ -136,20 +138,7 @@ function resetAll() {
   bounceCount = 0;
   nextDraftAt = 4;
 
-  modifiers = {
-    playerPaddleSpeedMult: 1,
-    botPaddleSpeedMult: 1,
-    ballSpeedMult: 1,
-    ballSize: 10,
-    playerShield: 0,
-    botShield: 0,
-    gravity: 0,
-    spinFactor: 0.12,
-    chaosBounce: false,
-    fireTrail: false,
-    botError: 0,
-    timeScale: 1
-  };
+  modifiers = defaultModifiers();
 
   player = { x:20, y:250, w:15, h:100, dy:0 };
   bot = { x:canvas.width-35, y:250, w:15, h:100, dy:0 };
@@ -162,9 +151,9 @@ function resetAll() {
 }
 
 function spawnBall(direction) {
-  const baseSpeed = 3; // slower base
+  const baseSpeed = 3; // controlled
   const speed = baseSpeed * modifiers.ballSpeedMult;
-  const angle = (Math.random()*0.6 - 0.3); // slight random vertical
+  const angle = (Math.random()*0.6 - 0.3); // slight vertical variation
   balls.push({
     x: canvas.width/2 + (Math.random()*40 - 20),
     y: canvas.height/2 + (Math.random()*40 - 20),
@@ -258,14 +247,14 @@ const cards = [
     applyBot: () => { modifiers.fireTrail = true; }
   },
   { id:"gravity", name:"Gravity Well", rarity:"rare",
-    desc:"Increase gravity.",
+    desc:"Increase gravity slightly.",
     applyPlayer: () => { modifiers.gravity += 0.03; },
     applyBot: () => { modifiers.gravity += 0.03; }
   },
   { id:"gravity_big", name:"Black Hole", rarity:"chaos",
-    desc:"Greatly increase gravity.",
-    applyPlayer: () => { modifiers.gravity += 0.08; },
-    applyBot: () => { modifiers.gravity += 0.08; }
+    desc:"Increase gravity more.",
+    applyPlayer: () => { modifiers.gravity += 0.07; },
+    applyBot: () => { modifiers.gravity += 0.07; }
   },
   { id:"multiball", name:"Double Trouble", rarity:"epic",
     desc:"Spawn an extra ball.",
@@ -450,23 +439,30 @@ function update() {
   // Explosion forces
   explosions.forEach(ex => {
     balls.forEach(ball => {
-      const dx = ball.x + ball.size/2 - ex.x;
-      const dy = ball.y + ball.size/2 - ex.y;
+      const cx = ball.x + ball.size/2;
+      const cy = ball.y + ball.size/2;
+      const dx = cx - ex.x;
+      const dy = cy - ex.y;
       const dist2 = dx*dx + dy*dy;
       if (dist2 < ex.r*ex.r) {
-        const f = 0.15; // push strength
-        ball.dx += (dx / Math.sqrt(dist2+0.01)) * f;
-        ball.dy += (dy / Math.sqrt(dist2+0.01)) * f;
+        const dist = Math.sqrt(dist2) || 0.001;
+        const f = 0.18; // push strength
+        ball.dx += (dx/dist) * f;
+        ball.dy += (dy/dist) * f;
       }
     });
-    // nudge paddles slightly
-    const fP = 0.1;
-    const dxP = (player.x+player.w/2) - ex.x;
-    const dyP = (player.y+player.h/2) - ex.y;
+    // nudge paddles slightly if inside blast
+    const fP = 0.12;
+    const px = player.x + player.w/2;
+    const py = player.y + player.h/2;
+    const dxP = px - ex.x;
+    const dyP = py - ex.y;
     if (dxP*dxP + dyP*dyP < ex.r*ex.r) player.y += (dyP>0?fP:-fP);
 
-    const dxB = (bot.x+bot.w/2) - ex.x;
-    const dyB = (bot.y+bot.h/2) - ex.y;
+    const bx = bot.x + bot.w/2;
+    const by = bot.y + bot.h/2;
+    const dxB = bx - ex.x;
+    const dyB = by - ex.y;
     if (dxB*dxB + dyB*dyB < ex.r*ex.r) bot.y += (dyB>0?fP:-fP);
   });
 
@@ -503,7 +499,7 @@ function handlePaddleHit(ball, paddle, dir) {
   }
 
   if (modifiers.fireTrail) {
-    explosions.push({ x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:50, life:0.4 });
+    explosions.push({ x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:55, life:0.45 });
     if (paddle === bot) bot.h *= 0.985;
   }
 
@@ -526,10 +522,10 @@ function draw() {
 
   // Explosions
   explosions.forEach(ex => {
-    const alpha = ex.life / 0.4;
+    const alpha = ex.life / 0.45;
     const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.r);
-    grad.addColorStop(0, `rgba(255,200,50,${alpha})`);
-    grad.addColorStop(1, `rgba(255,50,0,0)`);
+    grad.addColorStop(0, `rgba(255,220,80,${alpha})`);
+    grad.addColorStop(1, `rgba(255,80,0,0)`);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2);
@@ -552,7 +548,7 @@ function draw() {
   });
 }
 
-// idle loop so game starts smoothly
+// idle loop so game is ready
 requestAnimationFrame(loop);
 </script>
 
