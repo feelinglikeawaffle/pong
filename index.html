@@ -48,7 +48,7 @@
 
 <div id="credits" style="display:none;">
   <h2>Credits</h2>
-  <p>Pong, but it overdosed on Slay the Spire.</p>
+  <p>Pong, but it overdosed on deckbuilders.</p>
   <button onclick="backToMenu()">Back</button>
 </div>
 
@@ -83,11 +83,8 @@ let nextDraftAt = 4;
 let player, bot;
 let balls = [];
 let explosions = [];
-let particles = [];
 
 let modifiers = {
-  playerPaddleSizeMult: 1,
-  botPaddleSizeMult: 1,
   playerPaddleSpeedMult: 1,
   botPaddleSpeedMult: 1,
   ballSpeedMult: 1,
@@ -108,7 +105,6 @@ function startGame() {
   document.getElementById("credits").style.display = "none";
   canvas.style.display = "block";
   document.getElementById("hud").style.display = "block";
-
   resetAll();
   gameState = "playing";
   requestAnimationFrame(loop);
@@ -141,8 +137,6 @@ function resetAll() {
   nextDraftAt = 4;
 
   modifiers = {
-    playerPaddleSizeMult: 1,
-    botPaddleSizeMult: 1,
     playerPaddleSpeedMult: 1,
     botPaddleSpeedMult: 1,
     ballSpeedMult: 1,
@@ -162,7 +156,6 @@ function resetAll() {
 
   balls = [];
   explosions = [];
-  particles = [];
 
   spawnBall(1);
   updateHUD();
@@ -202,15 +195,35 @@ const cards = [
     applyPlayer: () => { modifiers.playerPaddleSpeedMult *= 1.25; },
     applyBot: () => { modifiers.botPaddleSpeedMult *= 1.25; }
   },
+  { id:"paddle_speed_big", name:"Hyper Reflexes", rarity:"rare",
+    desc:"Increase paddle speed by 60%.",
+    applyPlayer: () => { modifiers.playerPaddleSpeedMult *= 1.6; },
+    applyBot: () => { modifiers.botPaddleSpeedMult *= 1.6; }
+  },
   { id:"ball_fast", name:"Rage Orb", rarity:"rare",
     desc:"Increase ball speed by 40%.",
     applyPlayer: () => { modifiers.ballSpeedMult *= 1.4; },
     applyBot: () => { modifiers.ballSpeedMult *= 1.4; }
   },
+  { id:"ball_fast_insane", name:"Lightspeed", rarity:"epic",
+    desc:"Double ball speed.",
+    applyPlayer: () => { modifiers.ballSpeedMult *= 2; },
+    applyBot: () => { modifiers.ballSpeedMult *= 2; }
+  },
   { id:"ball_slow", name:"Calm Orb", rarity:"common",
     desc:"Reduce ball speed by 15%.",
     applyPlayer: () => { modifiers.ballSpeedMult *= 0.85; },
     applyBot: () => { modifiers.ballSpeedMult *= 0.85; }
+  },
+  { id:"ball_big", name:"Chunky Orb", rarity:"rare",
+    desc:"Increase ball size by 50%.",
+    applyPlayer: () => { modifiers.ballSize *= 1.5; balls.forEach(b=>b.size*=1.5); },
+    applyBot: () => { modifiers.ballSize *= 1.5; balls.forEach(b=>b.size*=1.5); }
+  },
+  { id:"ball_small", name:"Needle Orb", rarity:"rare",
+    desc:"Shrink ball size by 40%.",
+    applyPlayer: () => { modifiers.ballSize *= 0.6; balls.forEach(b=>b.size*=0.6); },
+    applyBot: () => { modifiers.ballSize *= 0.6; balls.forEach(b=>b.size*=0.6); }
   },
   { id:"heal1", name:"Small Heal", rarity:"common",
     desc:"+1 HP.",
@@ -227,13 +240,18 @@ const cards = [
     applyPlayer: () => { modifiers.playerShield++; },
     applyBot: () => { modifiers.botShield++; }
   },
+  { id:"shield_big", name:"Fortress", rarity:"epic",
+    desc:"Gain 3 shields.",
+    applyPlayer: () => { modifiers.playerShield+=3; },
+    applyBot: () => { modifiers.botShield+=3; }
+  },
   { id:"chaos_bounce", name:"Chaos Bounce", rarity:"chaos",
     desc:"Ball bounces with random angles.",
     applyPlayer: () => { modifiers.chaosBounce = true; },
     applyBot: () => { modifiers.chaosBounce = true; }
   },
   { id:"fire", name:"Fire Trail", rarity:"epic",
-    desc:"Balls leave fire and burn paddles.",
+    desc:"Balls leave fire and cause explosions.",
     applyPlayer: () => { modifiers.fireTrail = true; },
     applyBot: () => { modifiers.fireTrail = true; }
   },
@@ -242,10 +260,20 @@ const cards = [
     applyPlayer: () => { modifiers.gravity += 0.05; },
     applyBot: () => { modifiers.gravity += 0.05; }
   },
+  { id:"gravity_big", name:"Black Hole", rarity:"chaos",
+    desc:"Greatly increase gravity.",
+    applyPlayer: () => { modifiers.gravity += 0.15; },
+    applyBot: () => { modifiers.gravity += 0.15; }
+  },
   { id:"multiball", name:"Double Trouble", rarity:"epic",
     desc:"Spawn an extra ball.",
     applyPlayer: () => { spawnBall(Math.random()<0.5?-1:1); },
     applyBot: () => { spawnBall(Math.random()<0.5?-1:1); }
+  },
+  { id:"multiball3", name:"Orb Swarm", rarity:"chaos",
+    desc:"Spawn 3 extra balls.",
+    applyPlayer: () => { for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1); },
+    applyBot: () => { for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1); }
   },
   { id:"time_slow", name:"Bullet Time", rarity:"rare",
     desc:"Slow everything by 20%.",
@@ -261,6 +289,16 @@ const cards = [
     desc:"Bot becomes inaccurate.",
     applyPlayer: () => { modifiers.botError += 20; },
     applyBot: () => { modifiers.botError += 20; }
+  },
+  { id:"hp_swap", name:"Life Swap", rarity:"chaos",
+    desc:"Swap HP with bot.",
+    applyPlayer: () => { let t=playerHP; playerHP=botHP; botHP=t; },
+    applyBot: () => { let t=playerHP; playerHP=botHP; botHP=t; }
+  },
+  { id:"hp_steal", name:"Vampiric Hit", rarity:"epic",
+    desc:"Steal 1 HP from opponent.",
+    applyPlayer: () => { if(botHP>0){botHP--;playerHP++;} },
+    applyBot: () => { if(playerHP>0){playerHP--;botHP++;} }
   }
 ];
 
@@ -291,7 +329,7 @@ function showCardDraft() {
 
   const pool = [];
   const used = new Set();
-  while (pool.length < 5) {
+  while (pool.length < 5 && pool.length < cards.length) {
     const idx = Math.floor(Math.random()*cards.length);
     if (!used.has(idx)) {
       used.add(idx);
@@ -307,9 +345,7 @@ function showCardDraft() {
       card.applyPlayer();
       const botCard = cards[Math.floor(Math.random()*cards.length)];
       botCard.applyBot();
-
       resetBalls(Math.random()<0.5?1:-1);
-
       overlay.style.display = "none";
       gameState = "playing";
       updateHUD();
@@ -317,6 +353,8 @@ function showCardDraft() {
     container.appendChild(el);
   });
 }
+
+/* HUD / DAMAGE */
 
 function updateHUD() {
   document.getElementById("hpText").textContent =
@@ -336,6 +374,8 @@ function damageBot() {
   botHP--;
   if (botHP <= 0) resetAll();
 }
+
+/* LOOP */
 
 function loop() {
   if (gameState === "playing") {
@@ -363,6 +403,9 @@ function update() {
   bot.y = Math.max(0, Math.min(canvas.height - bot.h, bot.y));
 
   // Balls
+  let scored = false;
+  let scoreDir = 1;
+
   balls.forEach(ball => {
     ball.dy += modifiers.gravity * dt;
     ball.x += ball.dx * dt;
@@ -381,33 +424,33 @@ function update() {
     if (collide(ball, player)) handlePaddleHit(ball, player, 1);
     if (collide(ball, bot)) handlePaddleHit(ball, bot, -1);
 
-    // Scoring (Sudden Death)
-    if (ball.x < 0) {
-      damagePlayer();
-      resetBalls(1);
-    }
-    if (ball.x > canvas.width) {
-      damageBot();
-      resetBalls(-1);
+    // Scoring (sudden death)
+    if (!scored) {
+      if (ball.x + ball.size < 0) {
+        damagePlayer();
+        scored = true;
+        scoreDir = 1;
+      } else if (ball.x > canvas.width) {
+        damageBot();
+        scored = true;
+        scoreDir = -1;
+      }
     }
   });
 
-  // Explosions
+  if (scored) {
+    resetBalls(scoreDir);
+  }
+
+  // Explosions decay
   explosions.forEach(ex => ex.life -= dt);
   explosions = explosions.filter(e => e.life > 0);
-
-  // Particles
-  particles.forEach(p => {
-    p.x += p.dx * dt;
-    p.y += p.dy * dt;
-    p.life -= dt;
-  });
-  particles = particles.filter(p => p.life > 0);
 
   updateHUD();
 }
 
 function averageBallY() {
+  if (balls.length === 0) return canvas.height/2;
   let sum = 0;
   balls.forEach(b => sum += b.y);
   return sum / balls.length;
@@ -435,14 +478,9 @@ function handlePaddleHit(ball, paddle, dir) {
     ball.dy += hitPos * modifiers.spinFactor;
   }
 
-  // Fire trail burns bot
-  if (modifiers.fireTrail && paddle === bot) {
-    bot.h *= 0.98;
-  }
-
-  // Explosion
   if (modifiers.fireTrail) {
-    explosions.push({ x:ball.x, y:ball.y, r:40, life:0.4 });
+    explosions.push({ x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:40, life:0.4 });
+    if (paddle === bot) bot.h *= 0.98;
   }
 
   bounceCount++;
@@ -452,10 +490,47 @@ function handlePaddleHit(ball, paddle, dir) {
   }
 }
 
+/* DRAW */
+
 function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   // Net
   ctx.fillStyle = "#333";
   for (let y=0; y<canvas.height; y+=30)
-    ctx.fillRect(canvas.width/2 - 
+    ctx.fillRect(canvas.width/2 - 2, y, 4, 20);
+
+  // Explosions
+  explosions.forEach(ex => {
+    const alpha = ex.life / 0.4;
+    const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.r);
+    grad.addColorStop(0, `rgba(255,200,50,${alpha})`);
+    grad.addColorStop(1, `rgba(255,50,0,0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  // Paddles
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.fillRect(bot.x, bot.y, bot.w, bot.h);
+
+  // Balls
+  balls.forEach(ball => {
+    if (modifiers.fireTrail) {
+      ctx.fillStyle = "#f80";
+      ctx.fillRect(ball.x-3, ball.y-3, ball.size+6, ball.size+6);
+    }
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
+  });
+}
+
+// start loop idle so when game starts it's already running
+requestAnimationFrame(loop);
+</script>
+
+</body>
+</html>
