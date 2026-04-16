@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Chaos Pong Deckbuilder – Controlled</title>
+<title>Chaos Pong Deckbuilder – Super Explosions</title>
 <style>
   body { margin:0; background:#000; color:#fff; font-family:Arial,sans-serif; text-align:center; }
   #menu, #cardList, #credits { margin-top:80px; }
@@ -341,7 +341,6 @@ function showCardDraft() {
       const botCard = cards[Math.floor(Math.random()*cards.length)];
       debugLog("Bot picked card: " + botCard.id);
       botCard.applyBot();
-      // keep existing balls; no reset here
       document.getElementById("cardOverlay").style.display = "none";
       gameState = "playing";
       updateHUD();
@@ -427,133 +426,3 @@ function update() {
     if (ball.x + ball.size < 0) {
       damagePlayer();
       debugLog("Ball scored on player side, removing ball");
-      balls.splice(i, 1);
-      if (balls.length === 0) {
-        spawnBall(1);
-      }
-      continue;
-    }
-    if (ball.x > canvas.width) {
-      damageBot();
-      debugLog("Ball scored on bot side, removing ball");
-      balls.splice(i, 1);
-      if (balls.length === 0) {
-        spawnBall(-1);
-      }
-      continue;
-    }
-  }
-
-  // Explosions decay
-  explosions.forEach(ex => ex.life -= dt);
-  explosions = explosions.filter(e => e.life > 0);
-
-  // Explosion forces
-  explosions.forEach(ex => {
-    balls.forEach(ball => {
-      const cx = ball.x + ball.size/2;
-      const cy = ball.y + ball.size/2;
-      const dx = cx - ex.x;
-      const dy = cy - ex.y;
-      const dist2 = dx*dx + dy*dy;
-      if (dist2 < ex.r*ex.r) {
-        const dist = Math.sqrt(dist2) || 0.001;
-        const f = 0.18;
-        ball.dx += (dx/dist) * f;
-        ball.dy += (dy/dist) * f;
-      }
-    });
-  });
-
-  updateHUD();
-}
-
-function averageBallY() {
-  if (balls.length === 0) return canvas.height/2;
-  let sum = 0;
-  balls.forEach(b => sum += b.y);
-  return sum / balls.length;
-}
-
-function collide(ball, paddle) {
-  return (
-    ball.x < paddle.x + paddle.w &&
-    ball.x + ball.size > paddle.x &&
-    ball.y < paddle.y + paddle.h &&
-    ball.y + ball.size > paddle.y
-  );
-}
-
-function handlePaddleHit(ball, paddle, dir) {
-  ball.dx = Math.abs(ball.dx) * dir;
-
-  const center = paddle.y + paddle.h/2;
-  const hitPos = (ball.y + ball.size/2) - center;
-
-  if (modifiers.chaosBounce) {
-    ball.dy = (Math.random()*6 - 3);
-    ball.dx *= 1.15;
-  } else {
-    ball.dy += hitPos * modifiers.spinFactor;
-  }
-
-  if (modifiers.fireTrail) {
-    const ex = { x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:60, life:0.5 };
-    explosions.push(ex);
-    debugLog("Explosion created at (" + ex.x.toFixed(1) + "," + ex.y.toFixed(1) + "), total explosions: " + explosions.length);
-  }
-
-  bounceCount++;
-  if (bounceCount >= nextDraftAt) {
-    nextDraftAt += 4;
-    showCardDraft();
-  }
-}
-
-/* ===========================
-   DRAW
-=========================== */
-function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // Net
-  ctx.fillStyle = "#333";
-  for (let y=0; y<canvas.height; y+=30)
-    ctx.fillRect(canvas.width/2 - 2, y, 4, 20);
-
-  // Explosions
-  explosions.forEach(ex => {
-    const alpha = ex.life / 0.5;
-    const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.r);
-    grad.addColorStop(0, `rgba(255,220,80,${alpha})`);
-    grad.addColorStop(1, `rgba(255,80,0,0)`);
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2);
-    ctx.fill();
-  });
-
-  // Paddles
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(player.x, player.y, player.w, player.h);
-  ctx.fillRect(bot.x, bot.y, bot.w, bot.h);
-
-  // Balls
-  balls.forEach(ball => {
-    if (modifiers.fireTrail) {
-      ctx.fillStyle = "#f80";
-      ctx.fillRect(ball.x-3, ball.y-3, ball.size+6, ball.size+6);
-    }
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
-  });
-}
-
-/* ===========================
-   START LOOP
-=========================== */
-requestAnimationFrame(loop);
-</script>
-
-</body>
-</html>
