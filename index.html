@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Chaos Pong Deckbuilder – Super Explosions</title>
+<title>Chaos Pong Deckbuilder – Expanded</title>
 <style>
   body { margin:0; background:#000; color:#fff; font-family:Arial,sans-serif; text-align:center; }
   #menu, #cardList, #credits { margin-top:80px; }
@@ -48,7 +48,7 @@
   <button onclick="showCardList()">Card List</button>
   <button onclick="showCredits()">Credits</button>
   <p style="margin-top:20px;font-size:14px;color:#aaa;">
-    Controls: W/S to move. Draft every 4 bounces. Press ` (backtick) to toggle debug console.
+    Controls: W/S to move, SPACE to dash (if you have it). Draft every 4 bounces. Press ` (backtick) to toggle debug console.
   </p>
 </div>
 
@@ -138,7 +138,30 @@ function defaultModifiers() {
     chaosBounce: false,
     fireTrail: false,
     botError: 0,
-    timeScale: 1
+    timeScale: 1,
+
+    // new stuff
+    wallBoom:false,
+    iceAge:false,
+    playerFrozen:0,
+    botFrozen:0,
+    antiGravityTimer:0,
+    playerDash:false,
+    botDash:false,
+    dashCooldownP:0,
+    dashCooldownB:0,
+    shieldRecharge:false,
+    shieldProgress:0,
+    playerMagnet:false,
+    botMagnet:false,
+    playerClone:false,
+    botClone:false,
+    timeBomb:false,
+    pierce:false,
+    split:false,
+    sticky:false,
+    disco:false,
+    shockwave:false
   };
 }
 
@@ -203,7 +226,10 @@ function spawnBall(direction) {
     y: canvas.height/2 + (Math.random()*40 - 20),
     dx: speed * direction,
     dy: angle * speed,
-    size: modifiers.ballSize
+    size: modifiers.ballSize,
+    piercedUsed:false,
+    stickyTimer:0,
+    stickyOwner:null
   };
   balls.push(ball);
   debugLog("Spawned ball at (" + ball.x.toFixed(1) + "," + ball.y.toFixed(1) + "), total balls: " + balls.length);
@@ -285,6 +311,128 @@ const cards = [
     desc:"Bot becomes inaccurate.",
     applyPlayer: () => { modifiers.botError += 15; },
     applyBot: () => { modifiers.botError += 15; }
+  },
+
+  // NEW CARDS
+  {
+    id:"wall_boom",
+    name:"Wall Boom",
+    rarity:"rare",
+    desc:"Wall bounces create explosions.",
+    applyPlayer: () => { modifiers.wallBoom = true; },
+    applyBot: () => { modifiers.wallBoom = true; }
+  },
+  {
+    id:"ice_age",
+    name:"Ice Age",
+    rarity:"epic",
+    desc:"Paddles freeze briefly after hits.",
+    applyPlayer: () => { modifiers.iceAge = true; },
+    applyBot: () => { modifiers.iceAge = true; }
+  },
+  {
+    id:"frostbite",
+    name:"Frostbite",
+    rarity:"rare",
+    desc:"Opponent paddle speed -30%.",
+    applyPlayer: () => { modifiers.botPaddleSpeedMult *= 0.7; },
+    applyBot: () => { modifiers.playerPaddleSpeedMult *= 0.7; }
+  },
+  {
+    id:"gravity_nerf",
+    name:"Gravity Nerf",
+    rarity:"common",
+    desc:"Gravity reduced by 50%.",
+    applyPlayer: () => { modifiers.gravity *= 0.5; },
+    applyBot: () => { modifiers.gravity *= 0.5; }
+  },
+  {
+    id:"anti_gravity",
+    name:"Anti-Gravity",
+    rarity:"chaos",
+    desc:"Gravity flips for 10 seconds.",
+    applyPlayer: () => { modifiers.antiGravityTimer = 10; },
+    applyBot: () => { modifiers.antiGravityTimer = 10; }
+  },
+  {
+    id:"paddle_dash",
+    name:"Paddle Dash",
+    rarity:"rare",
+    desc:"Press SPACE to dash.",
+    applyPlayer: () => { modifiers.playerDash = true; },
+    applyBot: () => { modifiers.botDash = true; }
+  },
+  {
+    id:"shield_recharge",
+    name:"Shield Recharge",
+    rarity:"rare",
+    desc:"+1 shield every 10 bounces.",
+    applyPlayer: () => { modifiers.shieldRecharge = true; },
+    applyBot: () => { modifiers.shieldRecharge = true; }
+  },
+  {
+    id:"orb_magnet",
+    name:"Orb Magnet",
+    rarity:"epic",
+    desc:"Balls curve toward your paddle.",
+    applyPlayer: () => { modifiers.playerMagnet = true; },
+    applyBot: () => { modifiers.botMagnet = true; }
+  },
+  {
+    id:"paddle_clone",
+    name:"Paddle Clone",
+    rarity:"chaos",
+    desc:"Ghost paddle mirrors you.",
+    applyPlayer: () => { modifiers.playerClone = true; },
+    applyBot: () => { modifiers.botClone = true; }
+  },
+  {
+    id:"time_bomb",
+    name:"Time Bomb",
+    rarity:"epic",
+    desc:"Every 6 bounces, center explosion.",
+    applyPlayer: () => { modifiers.timeBomb = true; },
+    applyBot: () => { modifiers.timeBomb = true; }
+  },
+  {
+    id:"piercing_orb",
+    name:"Piercing Orb",
+    rarity:"rare",
+    desc:"First paddle hit per ball pierces.",
+    applyPlayer: () => { modifiers.pierce = true; },
+    applyBot: () => { modifiers.pierce = true; }
+  },
+  {
+    id:"chaos_split",
+    name:"Chaos Split",
+    rarity:"chaos",
+    desc:"Every 8 bounces, split a ball.",
+    applyPlayer: () => { modifiers.split = true; },
+    applyBot: () => { modifiers.split = true; }
+  },
+  {
+    id:"sticky_ball",
+    name:"Sticky Ball",
+    rarity:"rare",
+    desc:"Ball sticks briefly to paddles.",
+    applyPlayer: () => { modifiers.sticky = true; },
+    applyBot: () => { modifiers.sticky = true; }
+  },
+  {
+    id:"disco",
+    name:"Disco Mode",
+    rarity:"common",
+    desc:"Background changes every bounce.",
+    applyPlayer: () => { modifiers.disco = true; },
+    applyBot: () => { modifiers.disco = true; }
+  },
+  {
+    id:"shockwave",
+    name:"Shockwave",
+    rarity:"epic",
+    desc:"Paddle hits cause big flash.",
+    applyPlayer: () => { modifiers.shockwave = true; },
+    applyBot: () => { modifiers.shockwave = true; }
   }
 ];
 
@@ -375,27 +523,112 @@ function loop() {
 function update() {
   const dt = modifiers.timeScale;
 
+  // anti-gravity timer
+  if (modifiers.antiGravityTimer > 0) {
+    modifiers.antiGravityTimer -= dt;
+    modifiers.gravity = -Math.abs(modifiers.gravity);
+  } else {
+    modifiers.gravity = Math.abs(modifiers.gravity);
+  }
+
+  // freeze timers
+  if (modifiers.playerFrozen > 0) modifiers.playerFrozen -= dt;
+  if (modifiers.botFrozen > 0) modifiers.botFrozen -= dt;
+
+  // dash cooldowns
+  if (modifiers.dashCooldownP > 0) modifiers.dashCooldownP -= dt;
+  if (modifiers.dashCooldownB > 0) modifiers.dashCooldownB -= dt;
+
   // Player movement
-  const pSpeed = 4 * modifiers.playerPaddleSpeedMult * dt;
-  player.dy = keys["w"] ? -pSpeed : keys["s"] ? pSpeed : 0;
+  const basePSpeed = 4;
+  const pSpeed = basePSpeed * modifiers.playerPaddleSpeedMult * dt;
+  if (modifiers.playerFrozen <= 0) {
+    player.dy = keys["w"] ? -pSpeed : keys["s"] ? pSpeed : 0;
+  } else {
+    player.dy = 0;
+  }
   player.y += player.dy;
   player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
 
+  // Player dash
+  if (modifiers.playerDash && keys[" "] && modifiers.dashCooldownP <= 0 && modifiers.playerFrozen <= 0) {
+    const dir = keys["w"] ? -1 : keys["s"] ? 1 : 0;
+    if (dir !== 0) {
+      player.y += dir * 80;
+      player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+      modifiers.dashCooldownP = 3;
+      debugLog("Player dash");
+    }
+  }
+
   // Bot AI
-  const bSpeed = 4 * modifiers.botPaddleSpeedMult * dt;
-  let target = averageBallY() - bot.h/2;
-  target += (Math.random()*2 - 1) * modifiers.botError;
-  if (target > bot.y) bot.y += Math.min(bSpeed, target - bot.y);
-  else bot.y -= Math.min(bSpeed, bot.y - target);
+  const baseBSpeed = 4;
+  const bSpeed = baseBSpeed * modifiers.botPaddleSpeedMult * dt;
+  if (modifiers.botFrozen <= 0) {
+    let target = averageBallY() - bot.h/2;
+    target += (Math.random()*2 - 1) * modifiers.botError;
+    if (target > bot.y) bot.y += Math.min(bSpeed, target - bot.y);
+    else bot.y -= Math.min(bSpeed, bot.y - target);
+  }
   bot.y = Math.max(0, Math.min(canvas.height - bot.h, bot.y));
+
+  // Bot dash
+  if (modifiers.botDash && modifiers.dashCooldownB <= 0 && modifiers.botFrozen <= 0) {
+    const targetY = averageBallY();
+    if (Math.abs(targetY - (bot.y + bot.h/2)) > 60) {
+      const dir = targetY > bot.y ? 1 : -1;
+      bot.y += dir * 60;
+      bot.y = Math.max(0, Math.min(canvas.height - bot.h, bot.y));
+      modifiers.dashCooldownB = 3;
+      debugLog("Bot dash");
+    }
+  }
 
   // Update balls and scoring
   for (let i = balls.length - 1; i >= 0; i--) {
     const ball = balls[i];
 
+    // sticky
+    if (ball.stickyTimer > 0 && ball.stickyOwner) {
+      ball.stickyTimer -= dt;
+      const pad = ball.stickyOwner === "player" ? player : bot;
+      ball.x = pad.x + (ball.stickyOwner === "player" ? pad.w : -ball.size);
+      ball.y = pad.y + pad.h/2 - ball.size/2;
+      if (ball.stickyTimer <= 0) {
+        ball.dx *= 1.6;
+        debugLog("Sticky release");
+      }
+      continue;
+    }
+
     ball.dy += modifiers.gravity * dt;
     ball.x += ball.dx * dt;
     ball.y += ball.dy * dt;
+
+    // magnet
+    if (modifiers.playerMagnet || modifiers.botMagnet) {
+      const cx = ball.x + ball.size/2;
+      const cy = ball.y + ball.size/2;
+      let ax = 0, ay = 0;
+      if (modifiers.playerMagnet) {
+        const px = player.x + player.w/2;
+        const py = player.y + player.h/2;
+        const dx = px - cx, dy = py - cy;
+        const d = Math.hypot(dx,dy) || 1;
+        ax += dx/d * 0.05;
+        ay += dy/d * 0.05;
+      }
+      if (modifiers.botMagnet) {
+        const px = bot.x + bot.w/2;
+        const py = bot.y + bot.h/2;
+        const dx = px - cx, dy = py - cy;
+        const d = Math.hypot(dx,dy) || 1;
+        ax += dx/d * 0.05;
+        ay += dy/d * 0.05;
+      }
+      ball.dx += ax;
+      ball.dy += ay;
+    }
 
     // Wall bounce
     if (ball.y <= 0 || ball.y + ball.size >= canvas.height) {
@@ -404,11 +637,35 @@ function update() {
         ball.dx += (Math.random()*2 - 1);
         ball.dy += (Math.random()*2 - 1);
       }
+      if (modifiers.wallBoom) {
+        const ex = { x:ball.x+ball.size/2, y:ball.y<=0?0:canvas.height, r:120, life:2.0 };
+        explosions.push(ex);
+        screenFlash = Math.max(screenFlash, 0.6);
+        debugLog("Wall explosion at ("+ex.x.toFixed(1)+","+ex.y.toFixed(1)+")");
+      }
     }
 
-    // Paddle collisions
-    if (collide(ball, player)) handlePaddleHit(ball, player, 1);
-    if (collide(ball, bot)) handlePaddleHit(ball, bot, -1);
+    // Paddle collisions (with piercing)
+    let hitP = false, hitB = false;
+    if (collide(ball, player)) hitP = true;
+    if (collide(ball, bot)) hitB = true;
+
+    if (hitP) {
+      if (modifiers.pierce && !ball.piercedUsed) {
+        ball.piercedUsed = true;
+        debugLog("Pierced player paddle");
+      } else {
+        handlePaddleHit(ball, player, 1, "player");
+      }
+    }
+    if (hitB) {
+      if (modifiers.pierce && !ball.piercedUsed) {
+        ball.piercedUsed = true;
+        debugLog("Pierced bot paddle");
+      } else {
+        handlePaddleHit(ball, bot, -1, "bot");
+      }
+    }
 
     // Scoring: remove ONLY this ball
     if (ball.x + ball.size < 0) {
@@ -428,7 +685,7 @@ function update() {
   }
 
   // Explosions decay
-  explosions.forEach(ex => ex.life -= dt * 0.4); // slower decay
+  explosions.forEach(ex => ex.life -= dt * 0.4);
   explosions = explosions.filter(e => e.life > 0);
 
   // Explosion forces
@@ -471,7 +728,7 @@ function collide(ball, paddle) {
   );
 }
 
-function handlePaddleHit(ball, paddle, dir) {
+function handlePaddleHit(ball, paddle, dir, owner) {
   ball.dx = Math.abs(ball.dx) * dir;
 
   const center = paddle.y + paddle.h/2;
@@ -484,6 +741,13 @@ function handlePaddleHit(ball, paddle, dir) {
     ball.dy += hitPos * modifiers.spinFactor;
   }
 
+  // sticky
+  if (modifiers.sticky) {
+    ball.stickyTimer = 0.2;
+    ball.stickyOwner = owner;
+  }
+
+  // fire trail explosion
   if (modifiers.fireTrail) {
     const ex = { x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:200, life:2.5 };
     explosions.push(ex);
@@ -491,7 +755,54 @@ function handlePaddleHit(ball, paddle, dir) {
     debugLog("Explosion created at (" + ex.x.toFixed(1) + "," + ex.y.toFixed(1) + "), total explosions: " + explosions.length);
   }
 
+  // ice age freeze
+  if (modifiers.iceAge) {
+    modifiers.playerFrozen = 0.4;
+    modifiers.botFrozen = 0.4;
+  }
+
+  // shockwave
+  if (modifiers.shockwave) {
+    screenFlash = Math.max(screenFlash, 0.9);
+  }
+
   bounceCount++;
+
+  // shield recharge
+  if (modifiers.shieldRecharge) {
+    modifiers.shieldProgress++;
+    if (modifiers.shieldProgress >= 10) {
+      modifiers.shieldProgress = 0;
+      modifiers.playerShield++;
+      modifiers.botShield++;
+      debugLog("Shield recharge +1 both");
+    }
+  }
+
+  // time bomb: every 6 bounces center explosion
+  if (modifiers.timeBomb && bounceCount % 6 === 0) {
+    const ex = { x:canvas.width/2, y:canvas.height/2, r:220, life:2.5 };
+    explosions.push(ex);
+    screenFlash = Math.max(screenFlash, 1);
+    debugLog("Time bomb explosion");
+  }
+
+  // split
+  if (modifiers.split && bounceCount % 8 === 0 && balls.length < 12) {
+    const nb = {
+      x: ball.x,
+      y: ball.y,
+      dx: -ball.dx * 0.9,
+      dy: -ball.dy * 0.9,
+      size: ball.size * 0.8,
+      piercedUsed:false,
+      stickyTimer:0,
+      stickyOwner:null
+    };
+    balls.push(nb);
+    debugLog("Chaos split created extra ball");
+  }
+
   if (bounceCount >= nextDraftAt) {
     nextDraftAt += 4;
     showCardDraft();
@@ -500,10 +811,13 @@ function handlePaddleHit(ball, paddle, dir) {
 
 /* DRAW */
 function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // Base background
-  ctx.fillStyle = "#111";
+  // disco background
+  if (modifiers.disco) {
+    const hue = (bounceCount * 37) % 360;
+    ctx.fillStyle = `hsl(${hue},40%,12%)`;
+  } else {
+    ctx.fillStyle = "#111";
+  }
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
   // Net
@@ -512,9 +826,24 @@ function draw() {
     ctx.fillRect(canvas.width/2 - 2, y, 4, 20);
 
   // Paddles
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = modifiers.playerFrozen>0 ? "#88f" : "#fff";
   ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.fillStyle = modifiers.botFrozen>0 ? "#88f" : "#fff";
   ctx.fillRect(bot.x, bot.y, bot.w, bot.h);
+
+  // Clone paddles
+  if (modifiers.playerClone) {
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = "#0ff";
+    ctx.fillRect(player.x+25, player.y, player.w, player.h);
+    ctx.globalAlpha = 1;
+  }
+  if (modifiers.botClone) {
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = "#0ff";
+    ctx.fillRect(bot.x-25, bot.y, bot.w, bot.h);
+    ctx.globalAlpha = 1;
+  }
 
   // Balls
   balls.forEach(ball => {
@@ -526,7 +855,7 @@ function draw() {
     ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
   });
 
-  // Explosions ON TOP of everything
+  // Explosions ON TOP
   explosions.forEach(ex => {
     const alpha = Math.max(0, ex.life / 2.5);
     const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.r);
