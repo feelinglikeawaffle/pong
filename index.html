@@ -82,9 +82,7 @@
 </div>
 
 <script>
-/* ===========================
-   DEBUG CONSOLE
-=========================== */
+/* DEBUG CONSOLE */
 const debugBox = document.getElementById("debugConsole");
 let debugVisible = false;
 
@@ -107,9 +105,7 @@ document.addEventListener("keydown", e => {
   }
 });
 
-/* ===========================
-   GAME STATE
-=========================== */
+/* GAME STATE */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -125,6 +121,7 @@ let bounceCount, nextDraftAt;
 let player, bot;
 let balls = [];
 let explosions = [];
+let screenFlash = 0;
 
 let modifiers;
 
@@ -145,9 +142,7 @@ function defaultModifiers() {
   };
 }
 
-/* ===========================
-   MENU / FLOW
-=========================== */
+/* MENU / FLOW */
 function startGame() {
   document.getElementById("menu").style.display = "none";
   document.getElementById("cardList").style.display = "none";
@@ -192,14 +187,13 @@ function resetAll() {
 
   balls = [];
   explosions = [];
+  screenFlash = 0;
 
   spawnBall(1);
   updateHUD();
 }
 
-/* ===========================
-   BALLS
-=========================== */
+/* BALLS */
 function spawnBall(direction) {
   const baseSpeed = 3;
   const speed = baseSpeed * modifiers.ballSpeedMult;
@@ -215,9 +209,7 @@ function spawnBall(direction) {
   debugLog("Spawned ball at (" + ball.x.toFixed(1) + "," + ball.y.toFixed(1) + "), total balls: " + balls.length);
 }
 
-/* ===========================
-   CARDS
-=========================== */
+/* CARDS */
 const cards = [
   { id:"paddle_up_small", name:"Paddle Growth I", rarity:"common",
     desc:"Increase your paddle height by 20%.",
@@ -349,9 +341,7 @@ function showCardDraft() {
   });
 }
 
-/* ===========================
-   HUD / DAMAGE
-=========================== */
+/* HUD / DAMAGE */
 function updateHUD() {
   document.getElementById("hpText").textContent =
     `Player HP: ${playerHP} | Bot HP: ${botHP} | Shields P:${modifiers.playerShield} B:${modifiers.botShield}`;
@@ -373,9 +363,7 @@ function damageBot() {
   if (botHP <= 0) resetAll();
 }
 
-/* ===========================
-   LOOP
-=========================== */
+/* LOOP */
 function loop() {
   if (gameState === "playing") {
     update();
@@ -426,3 +414,142 @@ function update() {
     if (ball.x + ball.size < 0) {
       damagePlayer();
       debugLog("Ball scored on player side, removing ball");
+      balls.splice(i, 1);
+      if (balls.length === 0) spawnBall(1);
+      continue;
+    }
+    if (ball.x > canvas.width) {
+      damageBot();
+      debugLog("Ball scored on bot side, removing ball");
+      balls.splice(i, 1);
+      if (balls.length === 0) spawnBall(-1);
+      continue;
+    }
+  }
+
+  // Explosions decay
+  explosions.forEach(ex => ex.life -= dt * 0.4); // slower decay
+  explosions = explosions.filter(e => e.life > 0);
+
+  // Explosion forces
+  explosions.forEach(ex => {
+    balls.forEach(ball => {
+      const cx = ball.x + ball.size/2;
+      const cy = ball.y + ball.size/2;
+      const dx = cx - ex.x;
+      const dy = cy - ex.y;
+      const dist2 = dx*dx + dy*dy;
+      if (dist2 < ex.r*ex.r) {
+        const dist = Math.sqrt(dist2) || 0.001;
+        const f = 0.25;
+        ball.dx += (dx/dist) * f;
+        ball.dy += (dy/dist) * f;
+      }
+    });
+  });
+
+  // Screen flash decay
+  if (screenFlash > 0) screenFlash -= dt * 0.5;
+  if (screenFlash < 0) screenFlash = 0;
+
+  updateHUD();
+}
+
+function averageBallY() {
+  if (balls.length === 0) return canvas.height/2;
+  let sum = 0;
+  balls.forEach(b => sum += b.y);
+  return sum / balls.length;
+}
+
+function collide(ball, paddle) {
+  return (
+    ball.x < paddle.x + paddle.w &&
+    ball.x + ball.size > paddle.x &&
+    ball.y < paddle.y + paddle.h &&
+    ball.y + ball.size > paddle.y
+  );
+}
+
+function handlePaddleHit(ball, paddle, dir) {
+  ball.dx = Math.abs(ball.dx) * dir;
+
+  const center = paddle.y + paddle.h/2;
+  const hitPos = (ball.y + ball.size/2) - center;
+
+  if (modifiers.chaosBounce) {
+    ball.dy = (Math.random()*6 - 3);
+    ball.dx *= 1.15;
+  } else {
+    ball.dy += hitPos * modifiers.spinFactor;
+  }
+
+  if (modifiers.fireTrail) {
+    const ex = { x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:200, life:2.5 };
+    explosions.push(ex);
+    screenFlash = 1;
+    debugLog("Explosion created at (" + ex.x.toFixed(1) + "," + ex.y.toFixed(1) + "), total explosions: " + explosions.length);
+  }
+
+  bounceCount++;
+  if (bounceCount >= nextDraftAt) {
+    nextDraftAt += 4;
+    showCardDraft();
+  }
+}
+
+/* DRAW */
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Base background
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Net
+  ctx.fillStyle = "#333";
+  for (let y=0; y<canvas.height; y+=30)
+    ctx.fillRect(canvas.width/2 - 2, y, 4, 20);
+
+  // Paddles
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.fillRect(bot.x, bot.y, bot.w, bot.h);
+
+  // Balls
+  balls.forEach(ball => {
+    if (modifiers.fireTrail) {
+      ctx.fillStyle = "#f80";
+      ctx.fillRect(ball.x-3, ball.y-3, ball.size+6, ball.size+6);
+    }
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
+  });
+
+  // Explosions ON TOP of everything
+  explosions.forEach(ex => {
+    const alpha = Math.max(0, ex.life / 2.5);
+    const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.r);
+    grad.addColorStop(0, `rgba(255,255,180,${Math.min(1, alpha*2)})`);
+    grad.addColorStop(0.4, `rgba(255,200,80,${alpha})`);
+    grad.addColorStop(1, `rgba(255,80,0,0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  // Screen flash overlay
+  if (screenFlash > 0) {
+    const a = Math.min(0.6, screenFlash);
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+}
+
+/* START LOOP */
+requestAnimationFrame(loop);
+</script>
+
+</body>
+</html>
