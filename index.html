@@ -2,145 +2,522 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Pong Single Player + Health</title>
+<title>Chaos Pong Deckbuilder</title>
 <style>
-  body { margin:0; background:#000; color:white; font-family:Arial; text-align:center; }
-  canvas { background:#111; display:block; margin:40px auto; }
-  #health {
-    font-size:24px;
-    margin-top:20px;
+  body { margin:0; background:#000; color:#fff; font-family:Arial, sans-serif; text-align:center; }
+  #menu, #cardList, #credits { margin-top:80px; }
+  button {
+    padding:12px 24px; margin:8px; font-size:18px;
+    background:#222; color:#fff; border:2px solid #555; cursor:pointer;
   }
+  button:hover { background:#444; }
+  canvas { background:#111; display:none; margin:30px auto; }
+  #hud { margin-top:10px; font-size:18px; }
+  #cardOverlay {
+    position:fixed; inset:0; background:rgba(0,0,0,0.8);
+    display:none; align-items:center; justify-content:center; flex-direction:column; color:#fff;
+  }
+  #cardContainer {
+    display:flex; gap:12px; flex-wrap:wrap; justify-content:center; max-width:1000px;
+  }
+  .card {
+    width:180px; padding:10px; border-radius:6px; border:2px solid #888;
+    background:#222; cursor:pointer; text-align:left; font-size:14px;
+  }
+  .card h3 { margin:0 0 6px 0; font-size:16px; }
+  .rarity-common { border-color:#aaa; }
+  .rarity-rare { border-color:#4af; }
+  .rarity-epic { border-color:#c4f; }
+  .rarity-chaos { border-color:#f44; }
 </style>
 </head>
 <body>
 
-<h1>PONG — Single Player</h1>
-<div id="health">Player HP: 5 | Bot HP: 5</div>
+<div id="menu">
+  <h1>Chaos Pong Deckbuilder</h1>
+  <button onclick="startGame()">Start Game</button>
+  <button onclick="showCardList()">Card List</button>
+  <button onclick="showCredits()">Credits</button>
+</div>
+
+<div id="cardList" style="display:none;">
+  <h2>Card List (Chaos Pool)</h2>
+  <div id="cardListContent"></div>
+  <br>
+  <button onclick="backToMenu()">Back</button>
+</div>
+
+<div id="credits" style="display:none;">
+  <h2>Credits</h2>
+  <p>Pong, but it drank a deckbuilder and never recovered.</p>
+  <button onclick="backToMenu()">Back</button>
+</div>
+
+<div id="hud" style="display:none;">
+  <div id="hpText">Player HP: 5 | Bot HP: 5</div>
+  <div id="infoText">Bounces: 0 | Next draft at: 4</div>
+</div>
+
 <canvas id="game" width="900" height="600"></canvas>
+
+<div id="cardOverlay">
+  <h2>Choose a Card</h2>
+  <p>Click one card to unleash more chaos.</p>
+  <div id="cardContainer"></div>
+</div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const hpText = document.getElementById("hpText");
+const infoText = document.getElementById("infoText");
+const cardOverlay = document.getElementById("cardOverlay");
+const cardContainer = document.getElementById("cardContainer");
+const cardListDiv = document.getElementById("cardListContent");
 
-let playerHP = 5;
-let botHP = 5;
-
-const keys = {};
+let gameState = "menu"; // "menu", "playing", "draft"
+let keys = {};
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-let ball, leftPaddle, rightPaddle;
+let playerHP = 5;
+let botHP = 5;
+let bounceCount = 0;
+let nextDraftAt = 4;
 
-function resetBall(direction = 1) {
-  ball = {
-    x: canvas.width/2,
-    y: canvas.height/2,
-    dx: 5 * direction,
-    dy: (Math.random()*4 - 2)
-  };
+let player, bot;
+let balls = [];
+let explosions = [];
+
+let modifiers = {
+  playerPaddleSizeMult: 1,
+  botPaddleSizeMult: 1,
+  playerPaddleSpeedMult: 1,
+  botPaddleSpeedMult: 1,
+  ballSpeedMult: 1,
+  ballSize: 10,
+  playerShield: 0,
+  botShield: 0,
+  gravity: 0,
+  spinFactor: 0.1,
+  wallBounceChaos: false,
+  multiball: 0,
+  randomAngleOnHit: false,
+  fireTrail: false,
+  botError: 0,
+  timeScale: 1
+};
+
+const BASE_PLAYER_SPEED = 6;
+const BASE_BOT_SPEED = 6;
+const BASE_BALL_SPEED = 5;
+
+function startGame() {
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("cardList").style.display = "none";
+  document.getElementById("credits").style.display = "none";
+  canvas.style.display = "block";
+  document.getElementById("hud").style.display = "block";
+  resetAll();
+  gameState = "playing";
+  requestAnimationFrame(loop);
 }
 
-function resetGame() {
+function backToMenu() {
+  gameState = "menu";
+  canvas.style.display = "none";
+  document.getElementById("hud").style.display = "none";
+  document.getElementById("cardList").style.display = "none";
+  document.getElementById("credits").style.display = "none";
+  document.getElementById("menu").style.display = "block";
+}
+
+function showCardList() {
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("credits").style.display = "none";
+  document.getElementById("cardList").style.display = "block";
+  renderCardList();
+}
+
+function showCredits() {
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("cardList").style.display = "none";
+  document.getElementById("credits").style.display = "block";
+}
+
+function resetAll() {
   playerHP = 5;
   botHP = 5;
-  updateHealth();
-  resetBall();
+  bounceCount = 0;
+  nextDraftAt = 4;
+  modifiers = {
+    playerPaddleSizeMult: 1,
+    botPaddleSizeMult: 1,
+    playerPaddleSpeedMult: 1,
+    botPaddleSpeedMult: 1,
+    ballSpeedMult: 1,
+    ballSize: 10,
+    playerShield: 0,
+    botShield: 0,
+    gravity: 0,
+    spinFactor: 0.1,
+    wallBounceChaos: false,
+    multiball: 0,
+    randomAngleOnHit: false,
+    fireTrail: false,
+    botError: 0,
+    timeScale: 1
+  };
+  player = { x:20, y:250, w:15, h:100, dy:0 };
+  bot = { x:canvas.width-35, y:250, w:15, h:100, dy:0 };
+  balls = [];
+  explosions = [];
+  spawnBall(1);
+  updateHUD();
 }
 
-function updateHealth() {
-  document.getElementById("health").textContent =
-    `Player HP: ${playerHP} | Bot HP: ${botHP}`;
+function spawnBall(direction) {
+  const speed = BASE_BALL_SPEED * modifiers.ballSpeedMult;
+  balls.push({
+    x: canvas.width/2,
+    y: canvas.height/2,
+    dx: speed * direction,
+    dy: (Math.random()*4 - 2),
+    size: modifiers.ballSize
+  });
 }
 
-function init() {
-  leftPaddle = { x:20, y:250, w:15, h:100, dy:0 };
-  rightPaddle = { x:canvas.width-35, y:250, w:15, h:100, dy:0 };
-  resetBall();
-  loop();
+function resetBalls(direction) {
+  balls = [];
+  spawnBall(direction);
+}
+
+function updateHUD() {
+  hpText.textContent = `Player HP: ${playerHP} | Bot HP: ${botHP} | Shields: P${modifiers.playerShield} / B${modifiers.botShield}`;
+  infoText.textContent = `Bounces: ${bounceCount} | Next draft at: ${nextDraftAt}`;
+}
+
+/* CARD SYSTEM */
+
+const cards = [
+  { id:"paddle_up_small", name:"Paddle Growth I", rarity:"common",
+    desc:"Increase your paddle height by 20%. Stacks infinitely.",
+    apply: () => { modifiers.playerPaddleSizeMult *= 1.2; player.h *= 1.2; } },
+  { id:"paddle_up_big", name:"Paddle Growth II", rarity:"rare",
+    desc:"Increase your paddle height by 50%.",
+    apply: () => { modifiers.playerPaddleSizeMult *= 1.5; player.h *= 1.5; } },
+  { id:"paddle_speed_up", name:"Quick Hands", rarity:"common",
+    desc:"Increase your paddle speed by 25%.",
+    apply: () => { modifiers.playerPaddleSpeedMult *= 1.25; } },
+  { id:"paddle_speed_up_big", name:"Hyper Reflexes", rarity:"rare",
+    desc:"Increase your paddle speed by 60%.",
+    apply: () => { modifiers.playerPaddleSpeedMult *= 1.6; } },
+  { id:"ball_slow", name:"Calm Orb", rarity:"common",
+    desc:"Reduce ball speed by 15%.",
+    apply: () => { modifiers.ballSpeedMult *= 0.85; balls.forEach(b=>{b.dx*=0.85;b.dy*=0.85;}); } },
+  { id:"ball_fast", name:"Rage Orb", rarity:"rare",
+    desc:"Increase ball speed by 40%.",
+    apply: () => { modifiers.ballSpeedMult *= 1.4; balls.forEach(b=>{b.dx*=1.4;b.dy*=1.4;}); } },
+  { id:"ball_fast_insane", name:"Lightspeed", rarity:"epic",
+    desc:"Double ball speed. Again. And again.",
+    apply: () => { modifiers.ballSpeedMult *= 2; balls.forEach(b=>{b.dx*=2;b.dy*=2;}); } },
+  { id:"heal1", name:"Small Heal", rarity:"common",
+    desc:"+1 HP.",
+    apply: () => { playerHP += 1; } },
+  { id:"heal2", name:"Big Heal", rarity:"rare",
+    desc:"+2 HP.",
+    apply: () => { playerHP += 2; } },
+  { id:"full_heal", name:"Full Restore", rarity:"epic",
+    desc:"Restore to at least 5 HP.",
+    apply: () => { if (playerHP < 5) playerHP = 5; } },
+  { id:"shield1", name:"Shield Bubble", rarity:"rare",
+    desc:"Gain 1 shield. Prevents next HP loss.",
+    apply: () => { modifiers.playerShield += 1; } },
+  { id:"shield2", name:"Fortress", rarity:"epic",
+    desc:"Gain 3 shields.",
+    apply: () => { modifiers.playerShield += 3; } },
+  { id:"bot_shrink", name:"Bot Diet", rarity:"rare",
+    desc:"Shrink bot paddle by 25%.",
+    apply: () => { modifiers.botPaddleSizeMult *= 0.75; bot.h *= 0.75; } },
+  { id:"bot_slow", name:"Rusty Gears", rarity:"common",
+    desc:"Reduce bot paddle speed by 20%.",
+    apply: () => { modifiers.botPaddleSpeedMult *= 0.8; } },
+  { id:"bot_error", name:"Drunk Bot", rarity:"rare",
+    desc:"Increase bot tracking error.",
+    apply: () => { modifiers.botError += 20; } },
+  { id:"spin_up", name:"Extra Spin", rarity:"common",
+    desc:"Increase spin effect on hits.",
+    apply: () => { modifiers.spinFactor *= 1.4; } },
+  { id:"gravity_down", name:"Low Gravity", rarity:"rare",
+    desc:"Add slight downward gravity.",
+    apply: () => { modifiers.gravity += 0.05; } },
+  { id:"gravity_up", name:"High Gravity", rarity:"rare",
+    desc:"Add strong downward gravity.",
+    apply: () => { modifiers.gravity += 0.15; } },
+  { id:"random_angle", name:"Chaos Bounce", rarity:"chaos",
+    desc:"Ball gets a random angle on paddle hits.",
+    apply: () => { modifiers.randomAngleOnHit = true; } },
+  { id:"wall_chaos", name:"Angry Walls", rarity:"chaos",
+    desc:"Walls add random spin to the ball.",
+    apply: () => { modifiers.wallBounceChaos = true; } },
+  { id:"ball_big", name:"Chunky Orb", rarity:"rare",
+    desc:"Increase ball size by 50%.",
+    apply: () => { modifiers.ballSize *= 1.5; balls.forEach(b=>b.size*=1.5); } },
+  { id:"ball_small", name:"Needle Orb", rarity:"rare",
+    desc:"Shrink ball size by 40%.",
+    apply: () => { modifiers.ballSize *= 0.6; balls.forEach(b=>b.size*=0.6); } },
+  { id:"multiball1", name:"Double Trouble", rarity:"epic",
+    desc:"Spawn an extra ball.",
+    apply: () => { modifiers.multiball += 1; spawnBall(Math.random()<0.5?-1:1); } },
+  { id:"multiball2", name:"Orb Swarm", rarity:"chaos",
+    desc:"Spawn 3 extra balls.",
+    apply: () => { for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1); } },
+  { id:"fire_trail", name:"Fire Trail", rarity:"epic",
+    desc:"Balls leave fiery trails and cause explosions on paddle hits.",
+    apply: () => { modifiers.fireTrail = true; } },
+  { id:"time_slow", name:"Bullet Time", rarity:"rare",
+    desc:"Slow everything by 20%.",
+    apply: () => { modifiers.timeScale *= 0.8; } },
+  { id:"time_fast", name:"Overclock", rarity:"chaos",
+    desc:"Speed everything up by 30%.",
+    apply: () => { modifiers.timeScale *= 1.3; } },
+  { id:"hp_swap", name:"Life Swap", rarity:"chaos",
+    desc:"Swap your HP with the bot.",
+    apply: () => { const t = playerHP; playerHP = botHP; botHP = t; } },
+  { id:"hp_steal", name:"Vampiric Hit", rarity:"epic",
+    desc:"Steal 1 HP from the bot.",
+    apply: () => { if (botHP>0){botHP--;playerHP++;} } },
+  { id:"mega_paddle", name:"Screen Wall", rarity:"chaos",
+    desc:"Double your paddle size.",
+    apply: () => { modifiers.playerPaddleSizeMult *= 2; player.h *= 2; } },
+  { id:"bot_freeze", name:"System Crash", rarity:"epic",
+    desc:"Bot paddle speed reduced massively.",
+    apply: () => { modifiers.botPaddleSpeedMult *= 0.3; } },
+  { id:"hp_bomb", name:"HP Bomb", rarity:"chaos",
+    desc:"Both lose 1 HP. Shields apply.",
+    apply: () => {
+      damagePlayer(1,true);
+      damageBot(1,true);
+    } }
+];
+
+function rarityClass(r) {
+  if (r === "common") return "rarity-common";
+  if (r === "rare") return "rarity-rare";
+  if (r === "epic") return "rarity-epic";
+  return "rarity-chaos";
+}
+
+function renderCardList() {
+  cardListDiv.innerHTML = "";
+  cards.forEach(c => {
+    const div = document.createElement("div");
+    div.className = "card " + rarityClass(c.rarity);
+    div.innerHTML = `<h3>${c.name}</h3><strong>${c.rarity.toUpperCase()}</strong><br>${c.desc}`;
+    cardListDiv.appendChild(div);
+  });
+}
+
+function showCardDraft() {
+  gameState = "draft";
+  cardOverlay.style.display = "flex";
+  cardContainer.innerHTML = "";
+  const pool = [];
+  const used = new Set();
+  while (pool.length < 5 && pool.length < cards.length) {
+    const idx = Math.floor(Math.random()*cards.length);
+    if (!used.has(idx)) {
+      used.add(idx);
+      pool.push(cards[idx]);
+    }
+  }
+  pool.forEach(card => {
+    const div = document.createElement("div");
+    div.className = "card " + rarityClass(card.rarity);
+    div.innerHTML = `<h3>${card.name}</h3><strong>${card.rarity.toUpperCase()}</strong><br>${card.desc}`;
+    div.onclick = () => {
+      card.apply();
+      resetBalls(Math.random()<0.5?1:-1);
+      cardOverlay.style.display = "none";
+      gameState = "playing";
+      updateHUD();
+    };
+    cardContainer.appendChild(div);
+  });
+}
+
+/* DAMAGE / HP */
+
+function damagePlayer(amount, ignoreShield=false) {
+  if (!ignoreShield && modifiers.playerShield > 0) {
+    modifiers.playerShield--;
+    return;
+  }
+  playerHP -= amount;
+  if (playerHP <= 0) {
+    resetAll();
+  }
+}
+
+function damageBot(amount, ignoreShield=false) {
+  if (!ignoreShield && modifiers.botShield > 0) {
+    modifiers.botShield--;
+    return;
+  }
+  botHP -= amount;
+  if (botHP <= 0) {
+    resetAll();
+  }
+}
+
+/* GAME LOOP */
+
+function loop() {
+  if (gameState === "playing") {
+    update();
+    draw();
+  }
+  requestAnimationFrame(loop);
 }
 
 function update() {
+  const dt = modifiers.timeScale;
+
   // Player movement
-  leftPaddle.dy = keys["w"] ? -6 : keys["s"] ? 6 : 0;
-  leftPaddle.y += leftPaddle.dy;
-  leftPaddle.y = Math.max(0, Math.min(canvas.height - leftPaddle.h, leftPaddle.y));
+  const pSpeed = BASE_PLAYER_SPEED * modifiers.playerPaddleSpeedMult * dt;
+  player.dy = (keys["w"] ? -pSpeed : keys["s"] ? pSpeed : 0);
+  player.y += player.dy;
+  player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
 
   // Bot AI
-  let target = ball.y - rightPaddle.h/2;
-  rightPaddle.y += (target - rightPaddle.y) * 0.08;
-  rightPaddle.y = Math.max(0, Math.min(canvas.height - rightPaddle.h, rightPaddle.y));
+  const bSpeed = BASE_BOT_SPEED * modifiers.botPaddleSpeedMult * dt;
+  let targetY = averageBallY() - bot.h/2;
+  targetY += (Math.random()*2-1) * modifiers.botError;
+  if (targetY > bot.y) bot.y += Math.min(bSpeed, targetY - bot.y);
+  else bot.y -= Math.min(bSpeed, bot.y - targetY);
+  bot.y = Math.max(0, Math.min(canvas.height - bot.h, bot.y));
 
-  // Move ball
-  ball.x += ball.dx;
-  ball.y += ball.dy;
+  // Balls
+  balls.forEach(ball => {
+    ball.dy += modifiers.gravity * dt;
+    ball.x += ball.dx * dt;
+    ball.y += ball.dy * dt;
 
-  // Wall bounce
-  if (ball.y <= 0 || ball.y + 10 >= canvas.height) {
-    ball.dy *= -1;
+    // Wall bounce
+    if (ball.y <= 0) {
+      ball.y = 0;
+      ball.dy *= -1;
+      if (modifiers.wallBounceChaos) ball.dx += (Math.random()*4-2);
+    }
+    if (ball.y + ball.size >= canvas.height) {
+      ball.y = canvas.height - ball.size;
+      ball.dy *= -1;
+      if (modifiers.wallBounceChaos) ball.dx += (Math.random()*4-2);
+    }
+
+    // Collisions
+    if (collide(ball, player)) {
+      handlePaddleHit(ball, player, 1);
+    }
+    if (collide(ball, bot)) {
+      handlePaddleHit(ball, bot, -1);
+    }
+
+    // Out of bounds
+    if (ball.x + ball.size < 0) {
+      damagePlayer(1);
+      resetBalls(1);
+    } else if (ball.x > canvas.width) {
+      damageBot(1);
+      resetBalls(-1);
+    }
+  });
+
+  // Explosions
+  explosions.forEach(ex => {
+    ex.life -= dt;
+  });
+  explosions = explosions.filter(e => e.life > 0);
+
+  updateHUD();
+}
+
+function averageBallY() {
+  if (balls.length === 0) return canvas.height/2;
+  let sum = 0;
+  balls.forEach(b => sum += b.y);
+  return sum / balls.length;
+}
+
+function collide(ball, paddle) {
+  return (
+    ball.x < paddle.x + paddle.w &&
+    ball.x + ball.size > paddle.x &&
+    ball.y < paddle.y + paddle.h &&
+    ball.y + ball.size > paddle.y
+  );
+}
+
+function handlePaddleHit(ball, paddle, dir) {
+  ball.dx = Math.abs(ball.dx) * dir;
+  const center = paddle.y + paddle.h/2;
+  const hitPos = (ball.y + ball.size/2) - center;
+  if (modifiers.randomAngleOnHit) {
+    ball.dy = (Math.random()*8 - 4);
+  } else {
+    ball.dy += hitPos * modifiers.spinFactor;
+  }
+  ball.dx *= 1.02; // tiny acceleration
+
+  if (modifiers.fireTrail) {
+    explosions.push({ x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:30, life:0.4 });
   }
 
-  // Collision helper
-  function collide(p) {
-    return (
-      ball.x < p.x + p.w &&
-      ball.x + 10 > p.x &&
-      ball.y < p.y + p.h &&
-      ball.y + 10 > p.y
-    );
-  }
-
-  // Left paddle hit
-  if (collide(leftPaddle)) {
-    ball.dx = Math.abs(ball.dx);
-    ball.dy += (ball.y - (leftPaddle.y + leftPaddle.h/2)) * 0.1;
-  }
-
-  // Right paddle hit
-  if (collide(rightPaddle)) {
-    ball.dx = -Math.abs(ball.dx);
-    ball.dy += (ball.y - (rightPaddle.y + rightPaddle.h/2)) * 0.1;
-  }
-
-  // Scoring / HP loss
-  if (ball.x < 0) {
-    playerHP--;
-    updateHealth();
-    if (playerHP <= 0) resetGame();
-    else resetBall(1);
-  }
-
-  if (ball.x > canvas.width) {
-    botHP--;
-    updateHealth();
-    if (botHP <= 0) resetGame();
-    else resetBall(-1);
+  bounceCount++;
+  if (bounceCount >= nextDraftAt) {
+    nextDraftAt += 4;
+    showCardDraft();
   }
 }
+
+/* DRAW */
 
 function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   // Net
   ctx.fillStyle = "#333";
-  for (let y=0; y<canvas.height; y+=30)
+  for (let y=0; y<canvas.height; y+=30) {
     ctx.fillRect(canvas.width/2 - 2, y, 4, 20);
+  }
+
+  // Explosions
+  explosions.forEach(ex => {
+    const alpha = ex.life / 0.4;
+    const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.r);
+    grad.addColorStop(0, `rgba(255,200,50,${alpha})`);
+    grad.addColorStop(1, `rgba(255,50,0,0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2);
+    ctx.fill();
+  });
 
   // Paddles
-  ctx.fillStyle = "white";
-  ctx.fillRect(leftPaddle.x, leftPaddle.y, leftPaddle.w, leftPaddle.h);
-  ctx.fillRect(rightPaddle.x, rightPaddle.y, rightPaddle.w, rightPaddle.h);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.fillRect(bot.x, bot.y, bot.w, bot.h);
 
-  // Ball
-  ctx.fillRect(ball.x, ball.y, 10, 10);
+  // Balls
+  balls.forEach(ball => {
+    if (modifiers.fireTrail) {
+      ctx.fillStyle = "#f80";
+      ctx.fillRect(ball.x-4, ball.y-4, ball.size+8, ball.size+8);
+    }
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
+  });
 }
-
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-
-init();
 </script>
 
 </body>
