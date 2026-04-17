@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Chaos Pong Deckbuilder – Stacks & Limits</title>
+<title>Chaos Pong Deckbuilder – Stacks & Mobile</title>
 <style>
   body { margin:0; background:#000; color:#fff; font-family:Arial,sans-serif; text-align:center; }
   #menu, #cardList, #credits { margin-top:80px; }
@@ -11,7 +11,7 @@
     background:#222; color:#fff; border:2px solid #555; cursor:pointer;
   }
   button:hover { background:#444; }
-  canvas { background:#111; display:none; margin:30px auto; }
+  canvas { background:#111; display:none; margin:30px auto; touch-action:none; }
   #hud { margin-top:10px; font-size:18px; display:none; }
   #cardHUD {
     display:none;
@@ -219,6 +219,21 @@ let botDifficulty = "normal"; // easy, normal, expert
 document.addEventListener("keydown", e => { keys[e.key] = true; });
 document.addEventListener("keyup", e => { keys[e.key] = false; });
 
+/* TOUCH SUPPORT – direct drag, player only */
+canvas.addEventListener("touchstart", handleTouch);
+canvas.addEventListener("touchmove", handleTouch);
+canvas.addEventListener("touchend", e => { /* no inertia, just stop */ });
+
+function handleTouch(e) {
+  e.preventDefault();
+  if (!player) return;
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches[0];
+  const y = touch.clientY - rect.top;
+  player.y = y - player.h/2;
+  player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+}
+
 let playerHP, botHP;
 let bounceCount, nextDraftAt;
 
@@ -238,27 +253,16 @@ const botCardsText = document.getElementById("botCardsText");
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
 function enforceLimits() {
-  // paddle size limits
   player.h = clamp(player.h, 40, 260);
   bot.h = clamp(bot.h, 40, 260);
 
-  // ball size limits
   modifiers.ballSize = clamp(modifiers.ballSize, 4, 40);
   balls.forEach(b => b.size = clamp(b.size, 4, 40));
 
-  // speed multiplier limits
   modifiers.ballSpeedMult = clamp(modifiers.ballSpeedMult, 0.4, 3.0);
-
-  // gravity limits
   modifiers.gravity = clamp(modifiers.gravity, -0.25, 0.25);
-
-  // error limit
   modifiers.botError = clamp(modifiers.botError, 0, 80);
-
-  // shield recharge interval
   modifiers.shieldInterval = clamp(modifiers.shieldInterval, 3, 20);
-
-  // time bomb interval
   modifiers.timeBombInterval = clamp(modifiers.timeBombInterval, 3, 20);
 }
 
@@ -392,9 +396,8 @@ function spawnBall(direction) {
 /* CARDS + STACKING */
 const cards = [
   { id:"paddle_up_small", name:"Paddle Growth I", rarity:"common",
-    desc:"Increase your paddle height by 20%. Stacks with diminishing returns.",
+    baseDesc:"Increase your paddle height by 20%. Stacks with diminishing returns.",
     applyPlayer: (count) => {
-      const mult = 1 + 0.2 * Math.max(1, count); // linear-ish
       player.h *= 1.2;
       enforceLimits();
     },
@@ -404,7 +407,7 @@ const cards = [
     }
   },
   { id:"paddle_up_big", name:"Paddle Growth II", rarity:"rare",
-    desc:"Increase your paddle height by 50%. Strong but capped.",
+    baseDesc:"Increase your paddle height by 50%. Strong but capped.",
     applyPlayer: (count) => {
       player.h *= 1.5;
       enforceLimits();
@@ -415,7 +418,7 @@ const cards = [
     }
   },
   { id:"paddle_speed", name:"Quick Hands", rarity:"common",
-    desc:"Increase paddle speed by 25%. Stacks up to 3x.",
+    baseDesc:"Increase paddle speed by 25%. Stacks up to 3x.",
     applyPlayer: (count) => {
       if (count <= 3) modifiers.playerPaddleSpeedMult *= 1.25;
       enforceLimits();
@@ -426,7 +429,7 @@ const cards = [
     }
   },
   { id:"ball_fast", name:"Rage Orb", rarity:"rare",
-    desc:"Increase ball speed by 30%. Capped.",
+    baseDesc:"Increase ball speed by 30%. Capped.",
     applyPlayer: (count) => {
       modifiers.ballSpeedMult *= 1.3;
       enforceLimits();
@@ -437,7 +440,7 @@ const cards = [
     }
   },
   { id:"ball_slow", name:"Calm Orb", rarity:"common",
-    desc:"Reduce ball speed by 15%. Capped.",
+    baseDesc:"Reduce ball speed by 15%. Capped.",
     applyPlayer: (count) => {
       modifiers.ballSpeedMult *= 0.85;
       enforceLimits();
@@ -448,7 +451,7 @@ const cards = [
     }
   },
   { id:"ball_big", name:"Chunky Orb", rarity:"rare",
-    desc:"Increase ball size by 50%. Capped.",
+    baseDesc:"Increase ball size by 50%. Capped.",
     applyPlayer: (count) => {
       modifiers.ballSize *= 1.5;
       balls.forEach(b=>b.size*=1.5);
@@ -461,7 +464,7 @@ const cards = [
     }
   },
   { id:"ball_small", name:"Needle Orb", rarity:"rare",
-    desc:"Shrink ball size by 40%. Capped.",
+    baseDesc:"Shrink ball size by 40%. Capped.",
     applyPlayer: (count) => {
       modifiers.ballSize *= 0.6;
       balls.forEach(b=>b.size*=0.6);
@@ -474,17 +477,17 @@ const cards = [
     }
   },
   { id:"heal1", name:"Small Heal", rarity:"common",
-    desc:"+1 HP. Stacks linearly.",
+    baseDesc:"+1 HP. Stacks linearly.",
     applyPlayer: (count) => { playerHP++; },
     applyBot: (count) => { botHP++; }
   },
   { id:"shield", name:"Shield Bubble", rarity:"rare",
-    desc:"Gain 1 shield. Stacks.",
+    baseDesc:"Gain 1 shield. Stacks.",
     applyPlayer: (count) => { modifiers.playerShield++; },
     applyBot: (count) => { modifiers.botShield++; }
   },
   { id:"chaos_bounce", name:"Chaos Bounce", rarity:"chaos",
-    desc:"Ball bounces with random angles. Extra copies increase chaos.",
+    baseDesc:"Ball bounces with random angles. Extra copies increase chaos.",
     applyPlayer: (count) => {
       modifiers.chaosBounce = true;
       modifiers.spinFactor = clamp(0.12 + 0.02*count, 0.12, 0.25);
@@ -495,7 +498,7 @@ const cards = [
     }
   },
   { id:"fire", name:"Fire Trail", rarity:"epic",
-    desc:"Balls cause explosions on paddle hit. Stacks increase radius.",
+    baseDesc:"Balls cause explosions on paddle hit. Stacks increase radius.",
     applyPlayer: (count) => {
       modifiers.fireTrail = true;
     },
@@ -504,7 +507,7 @@ const cards = [
     }
   },
   { id:"gravity", name:"Gravity Well", rarity:"rare",
-    desc:"Increase gravity slightly. Stacks but capped.",
+    baseDesc:"Increase gravity slightly. Stacks but capped.",
     applyPlayer: (count) => {
       modifiers.gravity += 0.03;
       enforceLimits();
@@ -515,7 +518,7 @@ const cards = [
     }
   },
   { id:"multiball", name:"Double Trouble", rarity:"epic",
-    desc:"Spawn an extra ball.",
+    baseDesc:"Spawn an extra ball.",
     applyPlayer: (count) => {
       spawnBall(Math.random()<0.5?-1:1);
       debugLog("Card: multiball (player)","info");
@@ -526,7 +529,7 @@ const cards = [
     }
   },
   { id:"multiball3", name:"Orb Swarm", rarity:"chaos",
-    desc:"Spawn 3 extra balls.",
+    baseDesc:"Spawn 3 extra balls.",
     applyPlayer: (count) => {
       for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1);
       debugLog("Card: multiball3 (player)","info");
@@ -537,7 +540,7 @@ const cards = [
     }
   },
   { id:"bot_error", name:"Drunk Bot", rarity:"rare",
-    desc:"Bot becomes inaccurate. Stacks with cap.",
+    baseDesc:"Bot becomes inaccurate. Stacks with cap.",
     applyPlayer: (count) => {
       modifiers.botError += 15;
       enforceLimits();
@@ -552,7 +555,7 @@ const cards = [
     id:"wall_boom",
     name:"Wall Boom",
     rarity:"rare",
-    desc:"Wall bounces create explosions. Stacks increase radius.",
+    baseDesc:"Wall bounces create explosions. Stacks increase radius.",
     applyPlayer: (count) => { modifiers.wallBoom = true; },
     applyBot: (count) => { modifiers.wallBoom = true; }
   },
@@ -560,7 +563,7 @@ const cards = [
     id:"ice_age",
     name:"Ice Age",
     rarity:"epic",
-    desc:"Paddles freeze briefly after hits. Stacks = longer + slower.",
+    baseDesc:"Paddles freeze briefly after hits. Stacks = longer + slower.",
     applyPlayer: (count) => {
       modifiers.iceAge = true;
       modifiers.iceStacks = (modifiers.iceStacks || 0) + 1;
@@ -574,7 +577,7 @@ const cards = [
     id:"frostbite",
     name:"Frostbite",
     rarity:"rare",
-    desc:"Opponent paddle speed -30%. Stacks but capped.",
+    baseDesc:"Opponent paddle speed -30%. Stacks but capped.",
     applyPlayer: (count) => {
       modifiers.botPaddleSpeedMult *= 0.7;
       modifiers.botPaddleSpeedMult = clamp(modifiers.botPaddleSpeedMult, 0.3, 3);
@@ -588,7 +591,7 @@ const cards = [
     id:"gravity_nerf",
     name:"Gravity Nerf",
     rarity:"common",
-    desc:"Gravity reduced by 50%. Stacks but capped.",
+    baseDesc:"Gravity reduced by 50%. Stacks but capped.",
     applyPlayer: (count) => {
       modifiers.gravity *= 0.5;
       enforceLimits();
@@ -602,7 +605,7 @@ const cards = [
     id:"anti_gravity",
     name:"Anti-Gravity",
     rarity:"chaos",
-    desc:"Gravity flips for 10 seconds. Stacks extend duration.",
+    baseDesc:"Gravity flips for a duration. Stacks extend duration.",
     applyPlayer: (count) => {
       modifiers.antiGravityTimer += 10;
       enforceLimits();
@@ -616,7 +619,7 @@ const cards = [
     id:"paddle_dash",
     name:"Paddle Dash",
     rarity:"rare",
-    desc:"Press SPACE to dash. Extra copies reduce cooldown.",
+    baseDesc:"Press SPACE to dash. Extra copies reduce cooldown.",
     applyPlayer: (count) => {
       modifiers.playerDash = true;
     },
@@ -628,7 +631,7 @@ const cards = [
     id:"shield_recharge",
     name:"Shield Recharge",
     rarity:"rare",
-    desc:"+1 shield every N bounces. Stacks reduce N.",
+    baseDesc:"Gain +1 shield every few bounces. Stacks reduce interval.",
     applyPlayer: (count) => {
       modifiers.shieldRecharge = true;
       modifiers.shieldInterval = Math.max(4, 10 - 2*(count-1)); // 10,8,6,4...
@@ -644,7 +647,7 @@ const cards = [
     id:"orb_magnet",
     name:"Orb Magnet",
     rarity:"epic",
-    desc:"Balls curve toward your paddle. Stacks increase pull.",
+    baseDesc:"Balls are pulled vertically toward your paddle. Stacks increase pull.",
     applyPlayer: (count) => { modifiers.playerMagnet = true; },
     applyBot: (count) => { modifiers.botMagnet = true; }
   },
@@ -652,7 +655,7 @@ const cards = [
     id:"paddle_clone",
     name:"Paddle Clone",
     rarity:"chaos",
-    desc:"Ghost paddle mirrors you. Stacks increase opacity.",
+    baseDesc:"Ghost paddle mirrors you. Stacks increase opacity.",
     applyPlayer: (count) => { modifiers.playerClone = true; },
     applyBot: (count) => { modifiers.botClone = true; }
   },
@@ -660,7 +663,7 @@ const cards = [
     id:"time_bomb",
     name:"Time Bomb",
     rarity:"epic",
-    desc:"Every N bounces, center explosion. Stacks reduce N.",
+    baseDesc:"Every few bounces, a center explosion triggers. Stacks reduce interval.",
     applyPlayer: (count) => {
       modifiers.timeBomb = true;
       modifiers.timeBombInterval = Math.max(4, 6 - (count-1)); // 6,5,4...
@@ -676,7 +679,7 @@ const cards = [
     id:"piercing_orb",
     name:"Piercing Orb",
     rarity:"rare",
-    desc:"First paddle hit per ball pierces. Stacks increase pierce uses.",
+    baseDesc:"First paddle hit per ball pierces. Stacks increase pierce uses (abstracted).",
     applyPlayer: (count) => { modifiers.pierce = true; },
     applyBot: (count) => { modifiers.pierce = true; }
   },
@@ -684,7 +687,7 @@ const cards = [
     id:"chaos_split",
     name:"Chaos Split",
     rarity:"chaos",
-    desc:"Every 8 bounces, split a ball. Stacks increase chance.",
+    baseDesc:"Every 8 bounces, a ball may split. Stacks increase chance.",
     applyPlayer: (count) => { modifiers.split = true; },
     applyBot: (count) => { modifiers.split = true; }
   },
@@ -692,7 +695,7 @@ const cards = [
     id:"sticky_ball",
     name:"Sticky Ball",
     rarity:"rare",
-    desc:"Ball sticks briefly to paddles. Stacks increase stick time.",
+    baseDesc:"Ball sticks briefly to paddles. Stacks increase stick time.",
     applyPlayer: (count) => { modifiers.sticky = true; },
     applyBot: (count) => { modifiers.sticky = true; }
   },
@@ -700,7 +703,7 @@ const cards = [
     id:"disco",
     name:"Disco Mode",
     rarity:"common",
-    desc:"Background changes every bounce.",
+    baseDesc:"Background changes every bounce.",
     applyPlayer: (count) => { modifiers.disco = true; },
     applyBot: (count) => { modifiers.disco = true; }
   },
@@ -708,7 +711,7 @@ const cards = [
     id:"shockwave",
     name:"Shockwave",
     rarity:"epic",
-    desc:"Paddle hits cause big flash. Stacks increase intensity.",
+    baseDesc:"Paddle hits cause big flash. Stacks increase intensity.",
     applyPlayer: (count) => { modifiers.shockwave = true; },
     applyBot: (count) => { modifiers.shockwave = true; }
   }
@@ -721,13 +724,52 @@ function rarityClass(r) {
   return "rarity-chaos";
 }
 
+/* DYNAMIC DESCRIPTION HELPER */
+function getCardDescription(card, map, isPlayer) {
+  const current = map[card.id] || 0;
+  const next = current + 1;
+
+  switch (card.id) {
+    case "shield_recharge": {
+      const interval = Math.max(4, 10 - 2*(next-1));
+      return `Gain +1 shield every ${interval} bounces. (Next stack)`;
+    }
+    case "time_bomb": {
+      const interval = Math.max(4, 6 - (next-1));
+      return `Every ${interval} bounces, a center explosion triggers. (Next stack)`;
+    }
+    case "ice_age": {
+      const dur = clamp(0.4 + 0.15*(next-1), 0.4, 1.2).toFixed(2);
+      const slow = clamp(0.6 - 0.1*(next-1), 0.3, 0.6);
+      const slowPct = Math.round((1 - slow)*100);
+      return `Freeze paddles for ~${dur}s and slow by ~${slowPct}%. (Next stack)`;
+    }
+    case "sticky_ball": {
+      const t = (0.2 + 0.05*(next-1)).toFixed(2);
+      return `Ball sticks to paddles for ~${t}s. (Next stack)`;
+    }
+    case "chaos_split": {
+      const baseChance = 35;
+      const chance = Math.min(90, baseChance + 10*(next-1));
+      return `Every 8 bounces, ~${chance}% chance to split a ball. (Next stack)`;
+    }
+    case "orb_magnet": {
+      const pull = (5 + 3*(next-1));
+      return `Balls are pulled vertically toward your paddle (~${pull}% stronger). (Next stack)`;
+    }
+    default:
+      return card.baseDesc;
+  }
+}
+
 function renderCardList() {
   const div = document.getElementById("cardListContent");
   div.innerHTML = "";
   cards.forEach(c => {
     const el = document.createElement("div");
     el.className = "card " + rarityClass(c.rarity);
-    el.innerHTML = `<h3>${c.name}</h3><strong>${c.rarity}</strong><br>${c.desc}<br><small>ID: ${c.id}</small>`;
+    const desc = getCardDescription(c, {}, true); // show base/next=1
+    el.innerHTML = `<h3>${c.name}</h3><strong>${c.rarity}</strong><br>${desc}<br><small>ID: ${c.id}</small>`;
     div.appendChild(el);
   });
 }
@@ -769,7 +811,8 @@ function showCardDraft() {
   pool.forEach(card => {
     const el = document.createElement("div");
     el.className = "card " + rarityClass(card.rarity);
-    el.innerHTML = `<h3>${card.name}</h3><strong>${card.rarity}</strong><br>${card.desc}<br><small>ID: ${card.id}</small>`;
+    const desc = getCardDescription(card, playerCards, true);
+    el.innerHTML = `<h3>${card.name}</h3><strong>${card.rarity}</strong><br>${desc}<br><small>ID: ${card.id}</small>`;
     el.onclick = () => {
       debugLog("Player picked card: " + card.id, "info");
       const pCount = incrementCard(playerCards, card.id);
@@ -861,7 +904,6 @@ function toggleAutoStatus() {
 function update() {
   const dt = modifiers.timeScale;
 
-  // anti-gravity timer
   if (modifiers.antiGravityTimer > 0) {
     modifiers.antiGravityTimer -= dt;
     modifiers.gravity = -Math.abs(modifiers.gravity);
@@ -869,28 +911,24 @@ function update() {
     modifiers.gravity = Math.abs(modifiers.gravity);
   }
 
-  // freeze timers
   if (modifiers.playerFrozen > 0) modifiers.playerFrozen -= dt;
   if (modifiers.botFrozen > 0) modifiers.botFrozen -= dt;
   if (modifiers.playerFrozen <= 0) modifiers.freezeSlowP = 1;
   if (modifiers.botFrozen <= 0) modifiers.freezeSlowB = 1;
 
-  // dash cooldowns
   if (modifiers.dashCooldownP > 0) modifiers.dashCooldownP -= dt;
   if (modifiers.dashCooldownB > 0) modifiers.dashCooldownB -= dt;
 
-  // Player movement
   const basePSpeed = 4;
   const pSpeed = basePSpeed * modifiers.playerPaddleSpeedMult * dt * modifiers.freezeSlowP;
   if (modifiers.playerFrozen <= 0) {
     player.dy = keys["w"] ? -pSpeed : keys["s"] ? pSpeed : 0;
   } else {
-    player.dy = keys["w"] || keys["s"] ? pSpeed * 0.2 : 0; // tiny wiggle if frozen
+    player.dy = keys["w"] || keys["s"] ? pSpeed * 0.2 : 0;
   }
   player.y += player.dy;
   player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
 
-  // Player dash
   if (modifiers.playerDash && keys[" "] && modifiers.dashCooldownP <= 0 && modifiers.playerFrozen <= 0) {
     const dir = keys["w"] ? -1 : keys["s"] ? 1 : 0;
     if (dir !== 0) {
@@ -901,7 +939,6 @@ function update() {
     }
   }
 
-  // BOT AI
   if (botDifficulty === "easy") {
     if (balls.length > 0 && modifiers.botFrozen <= 0) {
       let targetBall = balls.reduce((a,b) =>
@@ -948,7 +985,6 @@ function update() {
 
   bot.y = Math.max(0, Math.min(canvas.height - bot.h, bot.y));
 
-  // Bot dash
   if (modifiers.botDash && modifiers.dashCooldownB <= 0 && modifiers.botFrozen <= 0) {
     const targetY = averageBallY();
     if (Math.abs(targetY - (bot.y + bot.h/2)) > 60) {
@@ -960,11 +996,9 @@ function update() {
     }
   }
 
-  // Update balls and scoring
   for (let i = balls.length - 1; i >= 0; i--) {
     const ball = balls[i];
 
-    // sticky
     if (ball.stickyTimer > 0 && ball.stickyOwner) {
       ball.stickyTimer -= dt;
       const pad = ball.stickyOwner === "player" ? player : bot;
@@ -981,37 +1015,31 @@ function update() {
     ball.x += ball.dx * dt;
     ball.y += ball.dy * dt;
 
-    // max ball speed
     const maxSpeed = 14 * modifiers.ballSpeedMult;
     ball.dx = clamp(ball.dx, -maxSpeed, maxSpeed);
     ball.dy = clamp(ball.dy, -maxSpeed, maxSpeed);
 
-    // magnet
+    /* VERTICAL-ONLY MAGNET */
     if (modifiers.playerMagnet || modifiers.botMagnet) {
-      const cx = ball.x + ball.size/2;
       const cy = ball.y + ball.size/2;
-      let ax = 0, ay = 0;
+      let ay = 0;
+
       if (modifiers.playerMagnet) {
-        const px = player.x + player.w/2;
         const py = player.y + player.h/2;
-        const dx = px - cx, dy = py - cy;
-        const d = Math.hypot(dx,dy) || 1;
-        ax += dx/d * 0.05;
-        ay += dy/d * 0.05;
+        const dy = py - cy;
+        const d = Math.abs(dy) || 1;
+        ay += (dy/d) * 0.05;
       }
       if (modifiers.botMagnet) {
-        const px = bot.x + bot.w/2;
         const py = bot.y + bot.h/2;
-        const dx = px - cx, dy = py - cy;
-        const d = Math.hypot(dx,dy) || 1;
-        ax += dx/d * 0.05;
-        ay += dy/d * 0.05;
+        const dy = py - cy;
+        const d = Math.abs(dy) || 1;
+        ay += (dy/d) * 0.05;
       }
-      ball.dx += ax;
+
       ball.dy += ay;
     }
 
-    // Wall bounce
     if (ball.y <= 0 || ball.y + ball.size >= canvas.height) {
       ball.dy *= -1;
       if (modifiers.chaosBounce) {
@@ -1026,7 +1054,6 @@ function update() {
       }
     }
 
-    // Paddle collisions (with piercing)
     let hitP = false, hitB = false;
     if (collide(ball, player)) hitP = true;
     if (collide(ball, bot)) hitB = true;
@@ -1048,7 +1075,6 @@ function update() {
       }
     }
 
-    // Scoring: remove ONLY this ball
     if (ball.x + ball.size < 0) {
       damagePlayer();
       debugLog("Ball scored on player side, removing ball","info");
@@ -1065,11 +1091,9 @@ function update() {
     }
   }
 
-  // Explosions decay
   explosions.forEach(ex => ex.life -= dt * 0.4);
   explosions = explosions.filter(e => e.life > 0);
 
-  // Explosion forces
   explosions.forEach(ex => {
     balls.forEach(ball => {
       const cx = ball.x + ball.size/2;
@@ -1086,7 +1110,6 @@ function update() {
     });
   });
 
-  // Screen flash decay
   if (screenFlash > 0) screenFlash -= dt * 0.5;
   if (screenFlash < 0) screenFlash = 0;
 
@@ -1123,13 +1146,11 @@ function handlePaddleHit(ball, paddle, dir, owner) {
     ball.dy += hitPos * modifiers.spinFactor;
   }
 
-  // sticky
   if (modifiers.sticky) {
     ball.stickyTimer = 0.2 + 0.05*(modifiers.iceStacks||0);
     ball.stickyOwner = owner;
   }
 
-  // fire trail explosion
   if (modifiers.fireTrail) {
     const baseR = 200;
     const ex = { x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:baseR, life:2.5 };
@@ -1138,7 +1159,6 @@ function handlePaddleHit(ball, paddle, dir, owner) {
     debugLog("Explosion created at (" + ex.x.toFixed(1) + "," + ex.y.toFixed(1) + "), total explosions: " + explosions.length,"info");
   }
 
-  // ice age freeze (visual + slow)
   if (modifiers.iceAge) {
     const stacks = modifiers.iceStacks || 1;
     const baseDur = 0.4;
@@ -1154,14 +1174,12 @@ function handlePaddleHit(ball, paddle, dir, owner) {
     modifiers.freezeSlowB = slowFactor;
   }
 
-  // shockwave
   if (modifiers.shockwave) {
     screenFlash = Math.max(screenFlash, 0.9);
   }
 
   bounceCount++;
 
-  // shield recharge
   if (modifiers.shieldRecharge) {
     modifiers.shieldProgress++;
     if (modifiers.shieldProgress >= modifiers.shieldInterval) {
@@ -1172,7 +1190,6 @@ function handlePaddleHit(ball, paddle, dir, owner) {
     }
   }
 
-  // time bomb
   if (modifiers.timeBomb && bounceCount % modifiers.timeBombInterval === 0) {
     const ex = { x:canvas.width/2, y:canvas.height/2, r:220, life:2.5 };
     explosions.push(ex);
@@ -1180,7 +1197,6 @@ function handlePaddleHit(ball, paddle, dir, owner) {
     debugLog("Time bomb explosion","info");
   }
 
-  // split
   if (modifiers.split && bounceCount % 8 === 0 && balls.length < 12) {
     const nb = {
       x: ball.x,
@@ -1204,7 +1220,6 @@ function handlePaddleHit(ball, paddle, dir, owner) {
 
 /* DRAW */
 function draw() {
-  // disco background
   if (modifiers.disco) {
     const hue = (bounceCount * 37) % 360;
     ctx.fillStyle = `hsl(${hue},40%,12%)`;
@@ -1213,12 +1228,10 @@ function draw() {
   }
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // Net
   ctx.fillStyle = "#333";
   for (let y=0; y<canvas.height; y+=30)
     ctx.fillRect(canvas.width/2 - 2, y, 4, 20);
 
-  // Paddles
   const playerFrozenVisual = modifiers.playerFrozen > 0;
   const botFrozenVisual = modifiers.botFrozen > 0;
 
@@ -1227,7 +1240,6 @@ function draw() {
   ctx.fillStyle = botFrozenVisual ? "#88cfff" : "#fff";
   ctx.fillRect(bot.x, bot.y, bot.w, bot.h);
 
-  // Clone paddles
   if (modifiers.playerClone) {
     ctx.globalAlpha = 0.4;
     ctx.fillStyle = "#0ff";
@@ -1241,7 +1253,6 @@ function draw() {
     ctx.globalAlpha = 1;
   }
 
-  // Balls
   balls.forEach(ball => {
     if (modifiers.fireTrail) {
       ctx.fillStyle = "#f80";
@@ -1251,7 +1262,6 @@ function draw() {
     ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
   });
 
-  // Explosions ON TOP
   explosions.forEach(ex => {
     const alpha = Math.max(0, ex.life / 2.5);
     const grad = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.r);
@@ -1264,7 +1274,6 @@ function draw() {
     ctx.fill();
   });
 
-  // Screen flash overlay
   if (screenFlash > 0) {
     const a = Math.min(0.6, screenFlash);
     ctx.fillStyle = `rgba(255,255,255,${a})`;
