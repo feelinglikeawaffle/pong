@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Chaos Pong Deckbuilder – God Mode</title>
+<title>Chaos Pong Deckbuilder – God Mode v2</title>
 <style>
   body { margin:0; background:#000; color:#fff; font-family:Arial,sans-serif; text-align:center; }
   #menu, #cardList, #credits { margin-top:80px; }
@@ -32,27 +32,41 @@
   .rarity-chaos { border-color:#f44; }
 
   #debugConsole {
-    position:fixed; bottom:0; left:0; width:420px; height:230px;
-    background:rgba(0,0,0,0.9); color:#0f0; font-family:monospace;
-    font-size:11px; padding:6px; overflow-y:auto; z-index:2000;
+    position:fixed; bottom:0; left:0; width:460px; height:260px;
+    background:rgba(0,0,0,0.5); color:#0f0; font-family:monospace;
+    font-size:11px; padding:6px; z-index:2000;
     border-top:2px solid #0f0; border-right:2px solid #0f0;
-    display:none;
+    display:none; box-sizing:border-box;
+    backdrop-filter: blur(4px);
   }
-  #debugHeader { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  #debugHeader {
+    display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;
+  }
+  #debugTitle { font-weight:bold; color:#8f8; }
   #debugControls button {
     padding:2px 6px; margin-left:4px; font-size:10px;
     border:1px solid #0f0; background:#111; color:#0f0; cursor:pointer;
   }
-  #debugInputRow {
-    display:flex; margin-top:4px;
+  #debugControls button:hover { background:#222; }
+  #debugTopRow {
+    display:flex; margin-bottom:4px; gap:4px; align-items:center;
   }
   #debugCommand {
-    flex:1; background:#000; color:#0f0; border:1px solid #0f0; font-family:monospace; font-size:11px; padding:2px;
+    flex:1; background:#000; color:#0f0; border:1px solid #0f0;
+    font-family:monospace; font-size:11px; padding:2px;
   }
   #debugRun {
-    margin-left:4px; padding:2px 6px; font-size:11px;
+    padding:2px 6px; font-size:11px;
     border:1px solid #0f0; background:#111; color:#0f0; cursor:pointer;
   }
+  #debugRun:hover { background:#222; }
+  #debugLogArea {
+    margin-top:4px; height:180px; overflow-y:auto; border-top:1px solid #0f0; padding-top:2px;
+  }
+  .log-info { color:#aaffaa; }
+  .log-warn { color:#ffff88; }
+  .log-error { color:#ff8888; }
+  .log-cmd { color:#88ccff; }
 </style>
 </head>
 <body>
@@ -100,18 +114,20 @@
 
 <div id="debugConsole">
   <div id="debugHeader">
-    <span><b>DEBUG CONSOLE</b> (press ` to toggle)</span>
+    <span id="debugTitle">DEBUG CONSOLE (press ` to toggle)</span>
     <div id="debugControls">
+      <span id="debugFPS" style="margin-right:6px;color:#8ff;">FPS: --</span>
       <button onclick="debugClear()">Clear</button>
       <button onclick="togglePause()">Pause</button>
+      <button onclick="toggleAutoStatus()">AutoStatus</button>
       <button onclick="debugStatus()">Status</button>
     </div>
   </div>
-  <div id="debugLogArea"></div>
-  <div id="debugInputRow">
-    <input id="debugCommand" placeholder="type command (help)" />
+  <div id="debugTopRow">
+    <input id="debugCommand" placeholder="type command (help, mods, listcards...)" />
     <button id="debugRun" onclick="runDebugCommand()">Run</button>
   </div>
+  <div id="debugLogArea"></div>
 </div>
 
 <script>
@@ -119,14 +135,23 @@
 const debugBox = document.getElementById("debugConsole");
 const debugLogArea = document.getElementById("debugLogArea");
 const debugInput = document.getElementById("debugCommand");
+const debugFPS = document.getElementById("debugFPS");
 let debugVisible = false;
+let debugAutoStatus = false;
+let debugHistory = [];
+let debugHistoryIndex = -1;
 
-function debugLog(msg) {
+function debugLog(msg, level="info") {
   const line = document.createElement("div");
   line.textContent = msg;
+  line.className =
+    level === "error" ? "log-error" :
+    level === "warn"  ? "log-warn"  :
+    level === "cmd"   ? "log-cmd"   :
+                        "log-info";
   debugLogArea.appendChild(line);
-  if (debugLogArea.children.length > 120) debugLogArea.removeChild(debugLogArea.firstChild);
-  debugBox.scrollTop = debugBox.scrollHeight;
+  if (debugLogArea.children.length > 200) debugLogArea.removeChild(debugLogArea.firstChild);
+  debugLogArea.scrollTop = debugLogArea.scrollHeight;
 }
 
 function debugClear() {
@@ -134,7 +159,7 @@ function debugClear() {
 }
 
 window.onerror = function(message, source, lineno, colno) {
-  debugLog("ERROR: " + message + " @ " + lineno + ":" + colno);
+  debugLog("ERROR: " + message + " @ " + lineno + ":" + colno, "error");
 };
 
 document.addEventListener("keydown", e => {
@@ -144,6 +169,27 @@ document.addEventListener("keydown", e => {
   }
   if (e.key === "Enter" && document.activeElement === debugInput) {
     runDebugCommand();
+  }
+  if (document.activeElement === debugInput) {
+    if (e.key === "ArrowUp") {
+      if (debugHistory.length > 0) {
+        if (debugHistoryIndex < 0) debugHistoryIndex = debugHistory.length - 1;
+        else debugHistoryIndex = Math.max(0, debugHistoryIndex - 1);
+        debugInput.value = debugHistory[debugHistoryIndex];
+        e.preventDefault();
+      }
+    } else if (e.key === "ArrowDown") {
+      if (debugHistory.length > 0) {
+        if (debugHistoryIndex >= debugHistory.length - 1) {
+          debugHistoryIndex = -1;
+          debugInput.value = "";
+        } else {
+          debugHistoryIndex++;
+          debugInput.value = debugHistory[debugHistoryIndex];
+        }
+        e.preventDefault();
+      }
+    }
   }
 });
 
@@ -240,11 +286,11 @@ function showCredits() {
 
 function setDifficulty(d) {
   botDifficulty = d;
-  debugLog("Difficulty set to " + d);
+  debugLog("Difficulty set to " + d, "info");
 }
 
 function resetAll() {
-  debugLog("=== RESET ALL ===");
+  debugLog("=== RESET ALL ===", "warn");
   playerHP = 5;
   botHP = 5;
   bounceCount = 0;
@@ -279,7 +325,7 @@ function spawnBall(direction) {
     stickyOwner:null
   };
   balls.push(ball);
-  debugLog("Spawned ball at (" + ball.x.toFixed(1) + "," + ball.y.toFixed(1) + "), total balls: " + balls.length);
+  debugLog("Spawned ball at (" + ball.x.toFixed(1) + "," + ball.y.toFixed(1) + "), total balls: " + balls.length, "info");
 }
 
 /* CARDS */
@@ -346,13 +392,13 @@ const cards = [
   },
   { id:"multiball", name:"Double Trouble", rarity:"epic",
     desc:"Spawn an extra ball.",
-    applyPlayer: () => { spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball (player)"); },
-    applyBot: () => { spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball (bot)"); }
+    applyPlayer: () => { spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball (player)","info"); },
+    applyBot: () => { spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball (bot)","info"); }
   },
   { id:"multiball3", name:"Orb Swarm", rarity:"chaos",
     desc:"Spawn 3 extra balls.",
-    applyPlayer: () => { for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball3 (player)"); },
-    applyBot: () => { for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball3 (bot)"); }
+    applyPlayer: () => { for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball3 (player)","info"); },
+    applyBot: () => { for(let i=0;i<3;i++) spawnBall(Math.random()<0.5?-1:1); debugLog("Card: multiball3 (bot)","info"); }
   },
   { id:"bot_error", name:"Drunk Bot", rarity:"rare",
     desc:"Bot becomes inaccurate.",
@@ -522,10 +568,10 @@ function showCardDraft() {
     el.className = "card " + rarityClass(card.rarity);
     el.innerHTML = `<h3>${card.name}</h3><strong>${card.rarity}</strong><br>${card.desc}`;
     el.onclick = () => {
-      debugLog("Player picked card: " + card.id);
+      debugLog("Player picked card: " + card.id, "info");
       card.applyPlayer();
       const botCard = cards[Math.floor(Math.random()*cards.length)];
-      debugLog("Bot picked card: " + botCard.id);
+      debugLog("Bot picked card: " + botCard.id, "info");
       botCard.applyBot();
       document.getElementById("cardOverlay").style.display = "none";
       gameState = "playing";
@@ -544,21 +590,40 @@ function updateHUD() {
 }
 
 function damagePlayer() {
-  if (modifiers.playerShield > 0) { modifiers.playerShield--; debugLog("Player shield blocked hit"); return; }
+  if (modifiers.playerShield > 0) { modifiers.playerShield--; debugLog("Player shield blocked hit","warn"); return; }
   playerHP--;
-  debugLog("Player took damage, HP=" + playerHP);
+  debugLog("Player took damage, HP=" + playerHP,"warn");
   if (playerHP <= 0) resetAll();
 }
 
 function damageBot() {
-  if (modifiers.botShield > 0) { modifiers.botShield--; debugLog("Bot shield blocked hit"); return; }
+  if (modifiers.botShield > 0) { modifiers.botShield--; debugLog("Bot shield blocked hit","warn"); return; }
   botHP--;
-  debugLog("Bot took damage, HP=" + botHP);
+  debugLog("Bot took damage, HP=" + botHP,"warn");
   if (botHP <= 0) resetAll();
 }
 
-/* LOOP */
-function loop() {
+/* LOOP + FPS */
+let lastTime = performance.now();
+let fpsAccum = 0;
+let fpsFrames = 0;
+
+function loop(now) {
+  const dtReal = (now - lastTime) / 1000;
+  lastTime = now;
+
+  fpsAccum += dtReal;
+  fpsFrames++;
+  if (fpsAccum >= 0.5) {
+    const fps = Math.round(fpsFrames / fpsAccum);
+    debugFPS.textContent = "FPS: " + fps;
+    fpsAccum = 0;
+    fpsFrames = 0;
+    if (debugAutoStatus && gameState === "playing") {
+      debugStatus(true);
+    }
+  }
+
   if (gameState === "playing") {
     update();
     draw();
@@ -570,11 +635,16 @@ function loop() {
 function togglePause() {
   if (gameState === "playing") {
     gameState = "paused";
-    debugLog("Game paused");
+    debugLog("Game paused","warn");
   } else if (gameState === "paused") {
     gameState = "playing";
-    debugLog("Game resumed");
+    debugLog("Game resumed","warn");
   }
+}
+
+function toggleAutoStatus() {
+  debugAutoStatus = !debugAutoStatus;
+  debugLog("AutoStatus " + (debugAutoStatus ? "ON" : "OFF"),"info");
 }
 
 /* UPDATE */
@@ -615,24 +685,24 @@ function update() {
       player.y += dir * 80;
       player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
       modifiers.dashCooldownP = 3;
-      debugLog("Player dash");
+      debugLog("Player dash","info");
     }
   }
 
   // BOT AI
   if (botDifficulty === "easy") {
-    if (balls.length > 0) {
+    if (balls.length > 0 && modifiers.botFrozen <= 0) {
+      // pick closest ball
       let targetBall = balls.reduce((a,b) =>
         Math.abs(b.x - bot.x) < Math.abs(a.x - bot.x) ? b : a
       );
-      if (Math.abs(targetBall.dx) > 8) {
-        targetBall = null;
-      }
-      if (targetBall && modifiers.botFrozen <= 0) {
-        let targetY = targetBall.y - bot.h/2;
-        targetY += (Math.random()*80 - 40);
-        bot.y += Math.sign(targetY - bot.y) * 2;
-      }
+      const speedMag = Math.max(1, Math.hypot(targetBall.dx, targetBall.dy));
+      const slowFactor = Math.max(0.3, 1 - (speedMag / 18)); // faster ball => smaller factor
+      let targetY = targetBall.y - bot.h/2;
+      targetY += (Math.random()*80 - 40) * (1 + speedMag/10); // more error when fast
+      const moveSpeed = 3 * slowFactor * modifiers.botPaddleSpeedMult * dt;
+      if (targetY > bot.y) bot.y += moveSpeed;
+      else bot.y -= moveSpeed;
     }
   } else if (botDifficulty === "normal") {
     const bSpeed = 4 * modifiers.botPaddleSpeedMult * dt;
@@ -645,7 +715,6 @@ function update() {
   } else if (botDifficulty === "expert") {
     if (balls.length > 0 && modifiers.botFrozen <= 0) {
       let targetBall = balls[0];
-      // choose ball heading toward bot if possible
       for (let b of balls) {
         if (b.dx > 0) { targetBall = b; break; }
       }
@@ -676,7 +745,7 @@ function update() {
       bot.y += dir * 60;
       bot.y = Math.max(0, Math.min(canvas.height - bot.h, bot.y));
       modifiers.dashCooldownB = 3;
-      debugLog("Bot dash");
+      debugLog("Bot dash","info");
     }
   }
 
@@ -692,7 +761,7 @@ function update() {
       ball.y = pad.y + pad.h/2 - ball.size/2;
       if (ball.stickyTimer <= 0) {
         ball.dx *= 1.6;
-        debugLog("Sticky release");
+        debugLog("Sticky release","info");
       }
       continue;
     }
@@ -742,7 +811,7 @@ function update() {
         const ex = { x:ball.x+ball.size/2, y:ball.y<=0?0:canvas.height, r:120, life:2.0 };
         explosions.push(ex);
         screenFlash = Math.max(screenFlash, 0.6);
-        debugLog("Wall explosion at ("+ex.x.toFixed(1)+","+ex.y.toFixed(1)+")");
+        debugLog("Wall explosion at ("+ex.x.toFixed(1)+","+ex.y.toFixed(1)+")","info");
       }
     }
 
@@ -754,7 +823,7 @@ function update() {
     if (hitP) {
       if (modifiers.pierce && !ball.piercedUsed) {
         ball.piercedUsed = true;
-        debugLog("Pierced player paddle");
+        debugLog("Pierced player paddle","info");
       } else {
         handlePaddleHit(ball, player, 1, "player");
       }
@@ -762,7 +831,7 @@ function update() {
     if (hitB) {
       if (modifiers.pierce && !ball.piercedUsed) {
         ball.piercedUsed = true;
-        debugLog("Pierced bot paddle");
+        debugLog("Pierced bot paddle","info");
       } else {
         handlePaddleHit(ball, bot, -1, "bot");
       }
@@ -771,14 +840,14 @@ function update() {
     // Scoring: remove ONLY this ball
     if (ball.x + ball.size < 0) {
       damagePlayer();
-      debugLog("Ball scored on player side, removing ball");
+      debugLog("Ball scored on player side, removing ball","info");
       balls.splice(i, 1);
       if (balls.length === 0) spawnBall(1);
       continue;
     }
     if (ball.x > canvas.width) {
       damageBot();
-      debugLog("Ball scored on bot side, removing ball");
+      debugLog("Ball scored on bot side, removing ball","info");
       balls.splice(i, 1);
       if (balls.length === 0) spawnBall(-1);
       continue;
@@ -853,7 +922,7 @@ function handlePaddleHit(ball, paddle, dir, owner) {
     const ex = { x:ball.x+ball.size/2, y:ball.y+ball.size/2, r:200, life:2.5 };
     explosions.push(ex);
     screenFlash = 1;
-    debugLog("Explosion created at (" + ex.x.toFixed(1) + "," + ex.y.toFixed(1) + "), total explosions: " + explosions.length);
+    debugLog("Explosion created at (" + ex.x.toFixed(1) + "," + ex.y.toFixed(1) + "), total explosions: " + explosions.length,"info");
   }
 
   // ice age freeze
@@ -876,7 +945,7 @@ function handlePaddleHit(ball, paddle, dir, owner) {
       modifiers.shieldProgress = 0;
       modifiers.playerShield++;
       modifiers.botShield++;
-      debugLog("Shield recharge +1 both");
+      debugLog("Shield recharge +1 both","info");
     }
   }
 
@@ -885,7 +954,7 @@ function handlePaddleHit(ball, paddle, dir, owner) {
     const ex = { x:canvas.width/2, y:canvas.height/2, r:220, life:2.5 };
     explosions.push(ex);
     screenFlash = Math.max(screenFlash, 1);
-    debugLog("Time bomb explosion");
+    debugLog("Time bomb explosion","info");
   }
 
   // split
@@ -901,7 +970,7 @@ function handlePaddleHit(ball, paddle, dir, owner) {
       stickyOwner:null
     };
     balls.push(nb);
-    debugLog("Chaos split created extra ball");
+    debugLog("Chaos split created extra ball","info");
   }
 
   if (bounceCount >= nextDraftAt) {
@@ -978,27 +1047,30 @@ function draw() {
 }
 
 /* DEBUG STATUS + COMMANDS */
-function debugStatus() {
-  debugLog("=== STATUS ===");
-  debugLog("Difficulty: " + botDifficulty);
-  debugLog("Balls: " + balls.length + ", Explosions: " + explosions.length);
-  debugLog("Player HP: " + playerHP + " | Bot HP: " + botHP);
-  debugLog("Gravity: " + modifiers.gravity.toFixed(3));
-  debugLog("BallSpeedMult: " + modifiers.ballSpeedMult.toFixed(2));
-  debugLog("Active mods: " + Object.keys(modifiers).filter(k => typeof modifiers[k]==='boolean' && modifiers[k]).join(", "));
+function debugStatus(silent=false) {
+  if (!silent) debugLog("=== STATUS ===","warn");
+  debugLog("State: " + gameState + " | Difficulty: " + botDifficulty,"info");
+  debugLog("Balls: " + balls.length + ", Explosions: " + explosions.length,"info");
+  debugLog("Player HP: " + playerHP + " | Bot HP: " + botHP,"info");
+  debugLog("Gravity: " + modifiers.gravity.toFixed(3),"info");
+  debugLog("BallSpeedMult: " + modifiers.ballSpeedMult.toFixed(2),"info");
+  const active = Object.keys(modifiers).filter(k => typeof modifiers[k]==='boolean' && modifiers[k]);
+  debugLog("Active mods: " + (active.length ? active.join(", ") : "none"),"info");
 }
 
 function runDebugCommand() {
   const cmd = debugInput.value.trim();
   if (!cmd) return;
-  debugLog("> " + cmd);
+  debugHistory.push(cmd);
+  debugHistoryIndex = -1;
+  debugLog("> " + cmd,"cmd");
   debugInput.value = "";
 
   const parts = cmd.split(/\s+/);
   const base = parts[0].toLowerCase();
 
   if (base === "help") {
-    debugLog("Commands: difficulty <easy|normal|expert>, spawnball, explode, givecard <id>, sethp <p|b> <n>, gravity <v>, speed <mult>");
+    debugLog("Commands: difficulty <easy|normal|expert>, spawnball, explode, givecard <id>, sethp <p|b> <n>, gravity <v>, speed <mult>, mods, listcards","info");
   } else if (base === "difficulty" && parts[1]) {
     setDifficulty(parts[1]);
   } else if (base === "spawnball") {
@@ -1007,15 +1079,15 @@ function runDebugCommand() {
     const ex = { x:canvas.width/2, y:canvas.height/2, r:220, life:2.5 };
     explosions.push(ex);
     screenFlash = 1;
-    debugLog("Manual explosion");
+    debugLog("Manual explosion","info");
   } else if (base === "givecard" && parts[1]) {
     const id = parts[1];
     const card = cards.find(c => c.id === id);
     if (card) {
       card.applyPlayer();
-      debugLog("Gave player card: " + id);
+      debugLog("Gave player card: " + id,"info");
     } else {
-      debugLog("No such card id: " + id);
+      debugLog("No such card id: " + id,"error");
     }
   } else if (base === "sethp" && parts[1] && parts[2]) {
     const who = parts[1].toLowerCase();
@@ -1023,22 +1095,28 @@ function runDebugCommand() {
     if (!isNaN(val)) {
       if (who === "p") playerHP = val;
       if (who === "b") botHP = val;
-      debugLog("Set HP: P=" + playerHP + " B=" + botHP);
+      debugLog("Set HP: P=" + playerHP + " B=" + botHP,"info");
     }
   } else if (base === "gravity" && parts[1]) {
     const v = parseFloat(parts[1]);
     if (!isNaN(v)) {
       modifiers.gravity = v;
-      debugLog("Gravity set to " + v);
+      debugLog("Gravity set to " + v,"info");
     }
   } else if (base === "speed" && parts[1]) {
     const v = parseFloat(parts[1]);
     if (!isNaN(v)) {
       modifiers.ballSpeedMult = v;
-      debugLog("Ball speed multiplier set to " + v);
+      debugLog("Ball speed multiplier set to " + v,"info");
     }
+  } else if (base === "mods") {
+    const active = Object.keys(modifiers).filter(k => typeof modifiers[k]==='boolean' && modifiers[k]);
+    debugLog("Active modifiers: " + (active.length ? active.join(", ") : "none"),"info");
+  } else if (base === "listcards") {
+    debugLog("Cards:","info");
+    cards.forEach(c => debugLog(`- ${c.id} (${c.rarity})`, "info"));
   } else {
-    debugLog("Unknown command. Type 'help'.");
+    debugLog("Unknown command. Type 'help'.","error");
   }
 }
 
