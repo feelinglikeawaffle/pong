@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Chaos Pong Deckbuilder – Expanded</title>
+<title>Chaos Pong Deckbuilder – God Mode</title>
 <style>
   body { margin:0; background:#000; color:#fff; font-family:Arial,sans-serif; text-align:center; }
   #menu, #cardList, #credits { margin-top:80px; }
@@ -32,11 +32,26 @@
   .rarity-chaos { border-color:#f44; }
 
   #debugConsole {
-    position:fixed; bottom:0; left:0; width:360px; height:200px;
-    background:rgba(0,0,0,0.8); color:#0f0; font-family:monospace;
+    position:fixed; bottom:0; left:0; width:420px; height:230px;
+    background:rgba(0,0,0,0.9); color:#0f0; font-family:monospace;
     font-size:11px; padding:6px; overflow-y:auto; z-index:2000;
     border-top:2px solid #0f0; border-right:2px solid #0f0;
     display:none;
+  }
+  #debugHeader { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  #debugControls button {
+    padding:2px 6px; margin-left:4px; font-size:10px;
+    border:1px solid #0f0; background:#111; color:#0f0; cursor:pointer;
+  }
+  #debugInputRow {
+    display:flex; margin-top:4px;
+  }
+  #debugCommand {
+    flex:1; background:#000; color:#0f0; border:1px solid #0f0; font-family:monospace; font-size:11px; padding:2px;
+  }
+  #debugRun {
+    margin-left:4px; padding:2px 6px; font-size:11px;
+    border:1px solid #0f0; background:#111; color:#0f0; cursor:pointer;
   }
 </style>
 </head>
@@ -47,6 +62,12 @@
   <button onclick="startGame()">Start Game</button>
   <button onclick="showCardList()">Card List</button>
   <button onclick="showCredits()">Credits</button>
+  <div style="margin-top:10px;">
+    <span>Bot Difficulty:</span>
+    <button onclick="setDifficulty('easy')">Easy</button>
+    <button onclick="setDifficulty('normal')">Normal</button>
+    <button onclick="setDifficulty('expert')">Expert</button>
+  </div>
   <p style="margin-top:20px;font-size:14px;color:#aaa;">
     Controls: W/S to move, SPACE to dash (if you have it). Draft every 4 bounces. Press ` (backtick) to toggle debug console.
   </p>
@@ -78,20 +99,38 @@
 </div>
 
 <div id="debugConsole">
-  <b>DEBUG CONSOLE (press ` to toggle)</b>
+  <div id="debugHeader">
+    <span><b>DEBUG CONSOLE</b> (press ` to toggle)</span>
+    <div id="debugControls">
+      <button onclick="debugClear()">Clear</button>
+      <button onclick="togglePause()">Pause</button>
+      <button onclick="debugStatus()">Status</button>
+    </div>
+  </div>
+  <div id="debugLogArea"></div>
+  <div id="debugInputRow">
+    <input id="debugCommand" placeholder="type command (help)" />
+    <button id="debugRun" onclick="runDebugCommand()">Run</button>
+  </div>
 </div>
 
 <script>
 /* DEBUG CONSOLE */
 const debugBox = document.getElementById("debugConsole");
+const debugLogArea = document.getElementById("debugLogArea");
+const debugInput = document.getElementById("debugCommand");
 let debugVisible = false;
 
 function debugLog(msg) {
   const line = document.createElement("div");
   line.textContent = msg;
-  debugBox.appendChild(line);
-  if (debugBox.children.length > 80) debugBox.removeChild(debugBox.firstChild);
+  debugLogArea.appendChild(line);
+  if (debugLogArea.children.length > 120) debugLogArea.removeChild(debugLogArea.firstChild);
   debugBox.scrollTop = debugBox.scrollHeight;
+}
+
+function debugClear() {
+  debugLogArea.innerHTML = "";
 }
 
 window.onerror = function(message, source, lineno, colno) {
@@ -103,14 +142,18 @@ document.addEventListener("keydown", e => {
     debugVisible = !debugVisible;
     debugBox.style.display = debugVisible ? "block" : "none";
   }
+  if (e.key === "Enter" && document.activeElement === debugInput) {
+    runDebugCommand();
+  }
 });
 
 /* GAME STATE */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let gameState = "menu";
+let gameState = "menu"; // menu, playing, draft, paused
 let keys = {};
+let botDifficulty = "normal"; // easy, normal, expert
 
 document.addEventListener("keydown", e => { keys[e.key] = true; });
 document.addEventListener("keyup", e => { keys[e.key] = false; });
@@ -140,7 +183,6 @@ function defaultModifiers() {
     botError: 0,
     timeScale: 1,
 
-    // new stuff
     wallBoom:false,
     iceAge:false,
     playerFrozen:0,
@@ -194,6 +236,11 @@ function showCardList() {
 function showCredits() {
   document.getElementById("menu").style.display = "none";
   document.getElementById("credits").style.display = "block";
+}
+
+function setDifficulty(d) {
+  botDifficulty = d;
+  debugLog("Difficulty set to " + d);
 }
 
 function resetAll() {
@@ -313,7 +360,6 @@ const cards = [
     applyBot: () => { modifiers.botError += 15; }
   },
 
-  // NEW CARDS
   {
     id:"wall_boom",
     name:"Wall Boom",
@@ -494,7 +540,7 @@ function updateHUD() {
   document.getElementById("hpText").textContent =
     `Player HP: ${playerHP} | Bot HP: ${botHP} | Shields P:${modifiers.playerShield} B:${modifiers.botShield}`;
   document.getElementById("infoText").textContent =
-    `Bounces: ${bounceCount} | Next draft at: ${nextDraftAt}`;
+    `Bounces: ${bounceCount} | Next draft at: ${nextDraftAt} | Diff: ${botDifficulty}`;
 }
 
 function damagePlayer() {
@@ -520,6 +566,18 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+/* PAUSE */
+function togglePause() {
+  if (gameState === "playing") {
+    gameState = "paused";
+    debugLog("Game paused");
+  } else if (gameState === "paused") {
+    gameState = "playing";
+    debugLog("Game resumed");
+  }
+}
+
+/* UPDATE */
 function update() {
   const dt = modifiers.timeScale;
 
@@ -561,18 +619,56 @@ function update() {
     }
   }
 
-  // Bot AI
-  const baseBSpeed = 4;
-  const bSpeed = baseBSpeed * modifiers.botPaddleSpeedMult * dt;
-  if (modifiers.botFrozen <= 0) {
-    let target = averageBallY() - bot.h/2;
-    target += (Math.random()*2 - 1) * modifiers.botError;
-    if (target > bot.y) bot.y += Math.min(bSpeed, target - bot.y);
-    else bot.y -= Math.min(bSpeed, bot.y - target);
+  // BOT AI
+  if (botDifficulty === "easy") {
+    if (balls.length > 0) {
+      let targetBall = balls.reduce((a,b) =>
+        Math.abs(b.x - bot.x) < Math.abs(a.x - bot.x) ? b : a
+      );
+      if (Math.abs(targetBall.dx) > 8) {
+        targetBall = null;
+      }
+      if (targetBall && modifiers.botFrozen <= 0) {
+        let targetY = targetBall.y - bot.h/2;
+        targetY += (Math.random()*80 - 40);
+        bot.y += Math.sign(targetY - bot.y) * 2;
+      }
+    }
+  } else if (botDifficulty === "normal") {
+    const bSpeed = 4 * modifiers.botPaddleSpeedMult * dt;
+    if (modifiers.botFrozen <= 0) {
+      let target = averageBallY() - bot.h/2;
+      target += (Math.random()*2 - 1) * modifiers.botError;
+      if (target > bot.y) bot.y += Math.min(bSpeed, target - bot.y);
+      else bot.y -= Math.min(bSpeed, bot.y - target);
+    }
+  } else if (botDifficulty === "expert") {
+    if (balls.length > 0 && modifiers.botFrozen <= 0) {
+      let targetBall = balls[0];
+      // choose ball heading toward bot if possible
+      for (let b of balls) {
+        if (b.dx > 0) { targetBall = b; break; }
+      }
+      let simX = targetBall.x;
+      let simY = targetBall.y;
+      let simDX = targetBall.dx;
+      let simDY = targetBall.dy;
+      for (let t = 0; t < 240; t++) {
+        simX += simDX * 0.5;
+        simY += simDY * 0.5;
+        if (simY <= 0 || simY >= canvas.height) simDY *= -1;
+        if (simX >= bot.x) break;
+      }
+      let predictedY = simY - bot.h/2;
+      const speed = 6 * modifiers.botPaddleSpeedMult * dt;
+      if (predictedY > bot.y) bot.y += Math.min(speed, predictedY - bot.y);
+      else bot.y -= Math.min(speed, bot.y - predictedY);
+    }
   }
+
   bot.y = Math.max(0, Math.min(canvas.height - bot.h, bot.y));
 
-  // Bot dash
+  // Bot dash (for dash card)
   if (modifiers.botDash && modifiers.dashCooldownB <= 0 && modifiers.botFrozen <= 0) {
     const targetY = averageBallY();
     if (Math.abs(targetY - (bot.y + bot.h/2)) > 60) {
@@ -604,6 +700,11 @@ function update() {
     ball.dy += modifiers.gravity * dt;
     ball.x += ball.dx * dt;
     ball.y += ball.dy * dt;
+
+    // max ball speed
+    const maxSpeed = 14;
+    ball.dx = Math.max(-maxSpeed, Math.min(maxSpeed, ball.dx));
+    ball.dy = Math.max(-maxSpeed, Math.min(maxSpeed, ball.dy));
 
     // magnet
     if (modifiers.playerMagnet || modifiers.botMagnet) {
@@ -873,6 +974,71 @@ function draw() {
     const a = Math.min(0.6, screenFlash);
     ctx.fillStyle = `rgba(255,255,255,${a})`;
     ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+}
+
+/* DEBUG STATUS + COMMANDS */
+function debugStatus() {
+  debugLog("=== STATUS ===");
+  debugLog("Difficulty: " + botDifficulty);
+  debugLog("Balls: " + balls.length + ", Explosions: " + explosions.length);
+  debugLog("Player HP: " + playerHP + " | Bot HP: " + botHP);
+  debugLog("Gravity: " + modifiers.gravity.toFixed(3));
+  debugLog("BallSpeedMult: " + modifiers.ballSpeedMult.toFixed(2));
+  debugLog("Active mods: " + Object.keys(modifiers).filter(k => typeof modifiers[k]==='boolean' && modifiers[k]).join(", "));
+}
+
+function runDebugCommand() {
+  const cmd = debugInput.value.trim();
+  if (!cmd) return;
+  debugLog("> " + cmd);
+  debugInput.value = "";
+
+  const parts = cmd.split(/\s+/);
+  const base = parts[0].toLowerCase();
+
+  if (base === "help") {
+    debugLog("Commands: difficulty <easy|normal|expert>, spawnball, explode, givecard <id>, sethp <p|b> <n>, gravity <v>, speed <mult>");
+  } else if (base === "difficulty" && parts[1]) {
+    setDifficulty(parts[1]);
+  } else if (base === "spawnball") {
+    spawnBall(Math.random()<0.5?-1:1);
+  } else if (base === "explode") {
+    const ex = { x:canvas.width/2, y:canvas.height/2, r:220, life:2.5 };
+    explosions.push(ex);
+    screenFlash = 1;
+    debugLog("Manual explosion");
+  } else if (base === "givecard" && parts[1]) {
+    const id = parts[1];
+    const card = cards.find(c => c.id === id);
+    if (card) {
+      card.applyPlayer();
+      debugLog("Gave player card: " + id);
+    } else {
+      debugLog("No such card id: " + id);
+    }
+  } else if (base === "sethp" && parts[1] && parts[2]) {
+    const who = parts[1].toLowerCase();
+    const val = parseInt(parts[2],10);
+    if (!isNaN(val)) {
+      if (who === "p") playerHP = val;
+      if (who === "b") botHP = val;
+      debugLog("Set HP: P=" + playerHP + " B=" + botHP);
+    }
+  } else if (base === "gravity" && parts[1]) {
+    const v = parseFloat(parts[1]);
+    if (!isNaN(v)) {
+      modifiers.gravity = v;
+      debugLog("Gravity set to " + v);
+    }
+  } else if (base === "speed" && parts[1]) {
+    const v = parseFloat(parts[1]);
+    if (!isNaN(v)) {
+      modifiers.ballSpeedMult = v;
+      debugLog("Ball speed multiplier set to " + v);
+    }
+  } else {
+    debugLog("Unknown command. Type 'help'.");
   }
 }
 
